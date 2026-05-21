@@ -18,6 +18,9 @@ FROM debian:bookworm-slim
 
 WORKDIR /opt/app
 
+# 🔥 FIX: Install SSL/TLS root certificates so Go can trust Turso over HTTPS
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Copy the compiled binary from the builder stage
 COPY --from=builder /opt/app/main .
 
