@@ -3,6 +3,7 @@
 A modern, mobile-friendly Codeforces group leaderboard web app built with Go (Gin) and SQLite.
 
 ## Features
+
 - Fast, always-up-to-date leaderboard (no API calls on user visits)
 - Admin dashboard for user/contest management
 - Automatic periodic refresh of contest/user results (background goroutine)
@@ -25,6 +26,7 @@ cd sece-cp-leaderboard
 ADMIN_USERNAME=youradmin
 ADMIN_PASSWORD=sha256_hash_of_password
 ```
+
 - To generate the password hash:
   ```bash
   echo -n 'yourpassword' | sha256sum
@@ -38,13 +40,15 @@ go run src/main.go
 ```
 
 4. **Visit**
+
 - Leaderboard: [http://localhost:8080/](http://localhost:8080/)
 - Admin: [http://localhost:8080/admin](http://localhost:8080/admin)
 
 ## Customization
+
 - Update the Codeforces group code in `main.go` if needed.
 - Update the GitHub repo links in `templates/leaderboard.tmpl` for your own repo.
 
 ## License
-MIT
 
+MIT

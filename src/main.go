@@ -16,67 +16,78 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
 
 var db *sql.DB
 
 func init() {
+    // 1. Load .env for local development. Don't crash if missing (for Render)
+    err := godotenv.Load(".env")
+    if err != nil {
+        log.Println("No .env file found, relying on system environment variables (Render mode).")
+    }
 
-	err := godotenv.Load(".env")
+    // 2. Fetch Turso credentials
+    dbUrl := os.Getenv("TURSO_DATABASE_URL")
+    authToken := os.Getenv("TURSO_AUTH_TOKEN")
 
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+    if dbUrl == "" || authToken == "" {
+        log.Fatal("CRITICAL: TURSO_DATABASE_URL or TURSO_AUTH_TOKEN is not set in environment")
+    }
 
-	// Initialize SQLite database
-	d, err := sql.Open("sqlite3", "./data/leaderboard.db")
-	if err != nil {
-		log.Fatal("Failed to open SQLite database:", err)
-	}
-	db = d
-	// Create users table: stores tracked Codeforces users
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		codeforces_handle TEXT UNIQUE NOT NULL,
-		display_name TEXT
-	)`)
-	if err != nil {
-		log.Fatal("Failed to create users table:", err)
-	}
-	// Create contests table: stores relevant Codeforces contests
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS contests (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		codeforces_contest_id INTEGER UNIQUE NOT NULL,
-		name TEXT,
-		start_time INTEGER
-	)`)
-	if err != nil {
-		log.Fatal("Failed to create contests table:", err)
-	}
-	// Create user_contest_results table: stores each user's result in each contest
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS user_contest_results (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		contest_id INTEGER NOT NULL,
-		rank INTEGER,
-		points INTEGER,
-		last_updated INTEGER,
-		FOREIGN KEY(user_id) REFERENCES users(id),
-		FOREIGN KEY(contest_id) REFERENCES contests(id),
-		UNIQUE(user_id, contest_id)
-	)`)
-	if err != nil {
-		log.Fatal("Failed to create user_contest_results table:", err)
-	}
-	// Optional: log refreshes
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS refresh_log (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		last_refreshed INTEGER
-	)`)
-	if err != nil {
-		log.Fatal("Failed to create refresh_log table:", err)
-	}
+    // 3. Format the connection string for Turso
+    connStr := fmt.Sprintf("%s?authToken=%s", dbUrl, authToken)
+
+    // 4. Initialize Turso database instead of local sqlite3
+    d, err := sql.Open("libsql", connStr)
+    if err != nil {
+        log.Fatal("Failed to open Turso database:", err)
+    }
+    db = d
+
+    // Create users table: stores tracked Codeforces users
+    _, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codeforces_handle TEXT UNIQUE NOT NULL,
+        display_name TEXT
+    )`)
+    if err != nil {
+        log.Fatal("Failed to create users table:", err)
+    }
+    // Create contests table: stores relevant Codeforces contests
+    _, err = db.Exec(`CREATE TABLE IF NOT EXISTS contests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codeforces_contest_id INTEGER UNIQUE NOT NULL,
+        name TEXT,
+        start_time INTEGER
+    )`)
+    if err != nil {
+        log.Fatal("Failed to create contests table:", err)
+    }
+    // Create user_contest_results table: stores each user's result in each contest
+    _, err = db.Exec(`CREATE TABLE IF NOT EXISTS user_contest_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        contest_id INTEGER NOT NULL,
+        rank INTEGER,
+        points INTEGER,
+        last_updated INTEGER,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(contest_id) REFERENCES contests(id),
+        UNIQUE(user_id, contest_id)
+    )`)
+    if err != nil {
+        log.Fatal("Failed to create user_contest_results table:", err)
+    }
+    // Optional: log refreshes
+    _, err = db.Exec(`CREATE TABLE IF NOT EXISTS refresh_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        last_refreshed INTEGER
+    )`)
+    if err != nil {
+        log.Fatal("Failed to create refresh_log table:", err)
+    }
 }
 
 func setupRouter() *gin.Engine {
