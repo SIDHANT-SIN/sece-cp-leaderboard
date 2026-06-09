@@ -448,7 +448,7 @@ r.POST("/admin/contests/delete_all", func(c *gin.Context) {
 
 // Fetch contests from Codeforces group and update DB
 func fetchAndStoreContests() error {
-	resp, err := http.Get("https://codeforces.com/api/contest.list?groupCode=awZVo932Dy")
+	resp, err := http.Get("https://codeforces.com/api/contest.list?groupCode=wontreveal")
 	if err != nil {
 		return err
 	}
@@ -734,6 +734,8 @@ func refreshAllUserContestResults() error {
 			fmt.Sprint(contest.CFID)
 
 		fmt.Println("API URL:", url)
+
+		time.Sleep(2 * time.Second)
 
 		resp, err := http.Get(url)
 		if err != nil {
