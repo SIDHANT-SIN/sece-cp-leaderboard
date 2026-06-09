@@ -215,11 +215,41 @@ func setupRouter() *gin.Engine {
 			return
 		}
 		cfid := c.PostForm("cfid")
-		resp, err := http.Get("https://codeforces.com/api/contest.standings?contestId=" + cfid + "&from=1&count=1")
-		if err != nil || resp.StatusCode != 200 {
-			c.String(http.StatusBadRequest, "Could not fetch contest info from Codeforces")
-			return
-		}
+	
+resp, err := http.Get(
+	"https://codeforces.com/api/contest.standings?contestId=" + cfid,
+)
+
+if err != nil {
+	fmt.Println("HTTP ERROR:", err)
+	c.String(http.StatusBadRequest,
+		"Could not fetch contest info from Codeforces")
+	return
+}
+
+fmt.Println("Contest ID:", cfid)
+fmt.Println("Status Code:", resp.StatusCode)
+
+resp.Body.Close()
+if resp.StatusCode != 200 {
+
+	if resp.StatusCode >= 500 {
+		c.String(
+			http.StatusBadGateway,
+			"Codeforces API server is currently unavailable (HTTP %d). Try later after a few minutes or hours.",
+			resp.StatusCode,
+		)
+		return
+	}
+
+	c.String(
+		http.StatusBadRequest,
+		"Could not fetch contest info from Codeforces (HTTP %d)",
+		resp.StatusCode,
+	)
+	return
+}
+
 		var apiResp struct {
 			Status string `json:"status"`
 			Result struct {
@@ -242,33 +272,68 @@ func setupRouter() *gin.Engine {
 		}
 		c.Redirect(http.StatusSeeOther, "/admin/contests")
 	})
-	r.POST("/admin/contests/delete", func(c *gin.Context) {
-		cookie, err := c.Cookie("admin_logged_in")
-		if err != nil || cookie != admin_password_hash {
-			c.Redirect(http.StatusSeeOther, "/admin_login")
-			return
-		}
-		id := c.PostForm("id")
-		_, err = db.Exec("DELETE FROM contests WHERE id = ?", id)
-		if err != nil {
-			c.String(http.StatusBadRequest, "Could not delete contest: %v", err)
-			return
-		}
-		c.Redirect(http.StatusSeeOther, "/admin/contests")
-	})
-	r.POST("/admin/contests/delete_all", func(c *gin.Context) {
-		cookie, err := c.Cookie("admin_logged_in")
-		if err != nil || cookie != admin_password_hash {
-			c.Redirect(http.StatusSeeOther, "/admin_login")
-			return
-		}
-		_, err = db.Exec("DELETE FROM contests")
-		if err != nil {
-			c.String(http.StatusInternalServerError, "Could not delete all contests: %v", err)
-			return
-		}
-		c.Redirect(http.StatusSeeOther, "/admin/contests")
-	})
+r.POST("/admin/contests/delete", func(c *gin.Context) {
+	cookie, err := c.Cookie("admin_logged_in")
+	if err != nil || cookie != admin_password_hash {
+		c.Redirect(http.StatusSeeOther, "/admin_login")
+		return
+	}
+
+	id := c.PostForm("id")
+
+	// Delete all results associated with this contest first
+	_, err = db.Exec(
+		"DELETE FROM user_contest_results WHERE contest_id = ?",
+		id,
+	)
+	if err != nil {
+		c.String(http.StatusBadRequest,
+			"Could not delete contest results: %v",
+			err,
+		)
+		return
+	}
+
+	// Delete the contest itself
+	_, err = db.Exec(
+		"DELETE FROM contests WHERE id = ?",
+		id,
+	)
+	if err != nil {
+		c.String(http.StatusBadRequest,
+			"Could not delete contest: %v",
+			err,
+		)
+		return
+	}
+
+	c.Redirect(http.StatusSeeOther, "/admin/contests")
+})
+r.POST("/admin/contests/delete_all", func(c *gin.Context) {
+	cookie, err := c.Cookie("admin_logged_in")
+	if err != nil || cookie != admin_password_hash {
+		c.Redirect(http.StatusSeeOther, "/admin_login")
+		return
+	}
+
+	_, err = db.Exec("DELETE FROM user_contest_results")
+	if err != nil {
+		c.String(http.StatusInternalServerError,
+			"Could not delete contest results: %v",
+			err)
+		return
+	}
+
+	_, err = db.Exec("DELETE FROM contests")
+	if err != nil {
+		c.String(http.StatusInternalServerError,
+			"Could not delete all contests: %v",
+			err)
+		return
+	}
+
+	c.Redirect(http.StatusSeeOther, "/admin/contests")
+})
 	r.GET("/leaderboard", func(c *gin.Context) {
 		userRows, err := db.Query("SELECT id, codeforces_handle, display_name FROM users")
 		if err != nil {
@@ -383,7 +448,7 @@ func setupRouter() *gin.Engine {
 
 // Fetch contests from Codeforces group and update DB
 func fetchAndStoreContests() error {
-	resp, err := http.Get("https://codeforces.com/api/contest.list?groupCode=KRUT7MZron")
+	resp, err := http.Get("https://codeforces.com/api/contest.list?groupCode=awZVo932Dy")
 	if err != nil {
 		return err
 	}
@@ -435,12 +500,168 @@ func calculatePoints(rank, total int, div string) int {
 	score := int(math.Max(10*d*math.Log10(float64(total+1)/float64(rank+1)), 0)) + baseParticipation
 	return score
 }
+
+
+// testing code
+
 // Refresh all user contest results and update points
+// func refreshAllUserContestResults() error {
+
+// 	// Get all users
+// 	fmt.Println("hello dude u refreshed")
+// 	userRows, err := db.Query("SELECT id, codeforces_handle FROM users")
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer userRows.Close()
+
+// 	var users []struct {
+// 		ID     int
+// 		Handle string
+// 	}
+
+// 	for userRows.Next() {
+// 		var id int
+// 		var handle string
+// 		userRows.Scan(&id, &handle)
+// 		users = append(users, struct {
+// 			ID     int
+// 			Handle string
+// 		}{id, handle})
+// 	}
+
+	
+// 	var handleList []string
+// 	for _, u := range users {
+// 		if u.Handle != "" {
+// 			handleList = append(handleList, u.Handle)
+// 		}
+// 	}
+// 	handlesParam := strings.Join(handleList, ";")
+
+
+// 	// Get all contests
+// 	contestRows, err := db.Query("SELECT id, codeforces_contest_id FROM contests")
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer contestRows.Close()
+
+// 	var contests []struct {
+// 		ID   int
+// 		CFID int
+// 	}
+
+// 	for contestRows.Next() {
+// 		var id, cfid int
+// 		contestRows.Scan(&id, &cfid)
+// 		contests = append(contests, struct {
+// 			ID   int
+// 			CFID int
+// 		}{id, cfid})
+// 	}
+
+// 	for _, contest := range contests {
+
+		
+// 		url := "https://codeforces.com/api/contest.standings?contestId=" +
+// 			fmt.Sprint(contest.CFID) +
+// 			"&showUnofficial=false"
+
+// 		if handlesParam != "" {
+// 			url += "&handles=" + handlesParam
+// 		}
+
+// 		resp, err := http.Get(url)
+		
+
+// 		if err != nil || resp.StatusCode != 200 {
+// 			continue
+// 		}
+
+// 		var standings struct {
+// 			Status string `json:"status"`
+// 			Result struct {
+// 				Contest struct {
+// 					Name string `json:"name"`
+// 				} `json:"contest"`
+// 				Rows []struct {
+// 					Party struct {
+// 						Members []struct {
+// 							Handle string `json:"handle"`
+// 						} `json:"members"`
+// 					} `json:"party"`
+// 					Rank int `json:"rank"`
+// 				} `json:"rows"`
+// 			} `json:"result"`
+// 		}
+
+// 		err = json.NewDecoder(resp.Body).Decode(&standings)
+// 		resp.Body.Close()
+// 		if err != nil || standings.Status != "OK" {
+// 			continue
+// 		}
+
+// 		total := len(standings.Result.Rows)
+
+// 		// Determine division from contest name
+// 		div := "Div. 1"
+// 		if strings.Contains(standings.Result.Contest.Name, "Div. 2") {
+// 			div = "Div. 2"
+// 		} else if strings.Contains(standings.Result.Contest.Name, "Div. 3") {
+// 			div = "Div. 3"
+// 		} else if strings.Contains(standings.Result.Contest.Name, "Div. 4") {
+// 			div = "Div. 4"
+// 		}
+
+// 		for _, user := range users {
+
+// 			userRank := 0
+
+// 			for _, row := range standings.Result.Rows {
+// 				for _, m := range row.Party.Members {
+// 					if m.Handle == user.Handle {
+// 						userRank = row.Rank
+// 						break
+// 					}
+// 				}
+// 				if userRank > 0 {
+// 					break
+// 				}
+// 			}
+
+// 			points := 0
+// 			if userRank > 0 {
+// 				points = calculatePoints(userRank, total, div)
+// 			}
+
+// 			_, err = db.Exec(
+// 				`INSERT OR REPLACE INTO user_contest_results 
+// 				(user_id, contest_id, rank, points, last_updated) 
+// 				VALUES (?, ?, ?, ?, strftime('%s','now'))`,
+// 				user.ID, contest.ID, userRank, points,
+// 			)
+
+// 			if err != nil {
+// 				log.Println("Failed to update result for user", user.Handle, "contest", contest.CFID, err)
+// 			}
+// 		}
+// 	}
+
+// 	return nil
+// }
+
+
+
+// manual checks
 func refreshAllUserContestResults() error {
+
+	fmt.Println("\n================ REFRESH STARTED ================")
 
 	// Get all users
 	userRows, err := db.Query("SELECT id, codeforces_handle FROM users")
 	if err != nil {
+		fmt.Println("ERROR loading users:", err)
 		return err
 	}
 	defer userRows.Close()
@@ -453,26 +674,29 @@ func refreshAllUserContestResults() error {
 	for userRows.Next() {
 		var id int
 		var handle string
-		userRows.Scan(&id, &handle)
+
+		if err := userRows.Scan(&id, &handle); err != nil {
+			fmt.Println("User scan error:", err)
+			continue
+		}
+
 		users = append(users, struct {
 			ID     int
 			Handle string
-		}{id, handle})
+		}{
+			ID:     id,
+			Handle: handle,
+		})
 	}
 
-	
-	var handleList []string
-	for _, u := range users {
-		if u.Handle != "" {
-			handleList = append(handleList, u.Handle)
-		}
-	}
-	handlesParam := strings.Join(handleList, ";")
-
+	fmt.Println("Users loaded:", len(users))
 
 	// Get all contests
-	contestRows, err := db.Query("SELECT id, codeforces_contest_id FROM contests")
+	contestRows, err := db.Query(
+		"SELECT id, codeforces_contest_id FROM contests",
+	)
 	if err != nil {
+		fmt.Println("ERROR loading contests:", err)
 		return err
 	}
 	defer contestRows.Close()
@@ -484,28 +708,44 @@ func refreshAllUserContestResults() error {
 
 	for contestRows.Next() {
 		var id, cfid int
-		contestRows.Scan(&id, &cfid)
+
+		if err := contestRows.Scan(&id, &cfid); err != nil {
+			fmt.Println("Contest scan error:", err)
+			continue
+		}
+
 		contests = append(contests, struct {
 			ID   int
 			CFID int
-		}{id, cfid})
+		}{
+			ID:   id,
+			CFID: cfid,
+		})
 	}
+
+	fmt.Println("Contests loaded:", len(contests))
 
 	for _, contest := range contests {
 
-		
-		url := "https://codeforces.com/api/contest.standings?contestId=" +
-			fmt.Sprint(contest.CFID) +
-			"&showUnofficial=false"
+		fmt.Println("\n--------------------------------")
+		fmt.Println("Processing contest:", contest.CFID)
 
-		if handlesParam != "" {
-			url += "&handles=" + handlesParam
-		}
+		url := "https://codeforces.com/api/contest.standings?contestId=" +
+			fmt.Sprint(contest.CFID)
+
+		fmt.Println("API URL:", url)
 
 		resp, err := http.Get(url)
-		
+		if err != nil {
+			fmt.Println("HTTP ERROR:", err)
+			continue
+		}
 
-		if err != nil || resp.StatusCode != 200 {
+		fmt.Println("HTTP Status:", resp.StatusCode)
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			fmt.Println("Skipping contest because status != 200")
 			continue
 		}
 
@@ -515,12 +755,14 @@ func refreshAllUserContestResults() error {
 				Contest struct {
 					Name string `json:"name"`
 				} `json:"contest"`
+
 				Rows []struct {
 					Party struct {
 						Members []struct {
 							Handle string `json:"handle"`
 						} `json:"members"`
 					} `json:"party"`
+
 					Rank int `json:"rank"`
 				} `json:"rows"`
 			} `json:"result"`
@@ -528,14 +770,33 @@ func refreshAllUserContestResults() error {
 
 		err = json.NewDecoder(resp.Body).Decode(&standings)
 		resp.Body.Close()
-		if err != nil || standings.Status != "OK" {
+
+		if err != nil {
+			fmt.Println("JSON Decode Error:", err)
 			continue
 		}
 
+		fmt.Println("CF Status:", standings.Status)
+
+		if standings.Status != "OK" {
+			fmt.Println("CF returned FAILED")
+			continue
+		}
+
+		fmt.Println("Contest Name:", standings.Result.Contest.Name)
+
 		total := len(standings.Result.Rows)
 
-		// Determine division from contest name
+		fmt.Println("Rows Returned:", total)
+
+		if total == 0 {
+			fmt.Println("No standings rows returned")
+			continue
+		}
+
+		// Detect division
 		div := "Div. 1"
+
 		if strings.Contains(standings.Result.Contest.Name, "Div. 2") {
 			div = "Div. 2"
 		} else if strings.Contains(standings.Result.Contest.Name, "Div. 3") {
@@ -544,39 +805,68 @@ func refreshAllUserContestResults() error {
 			div = "Div. 4"
 		}
 
+		fmt.Println("Division:", div)
+
+		// Build handle -> rank map
+		rankMap := make(map[string]int)
+
+		for _, row := range standings.Result.Rows {
+			for _, member := range row.Party.Members {
+				rankMap[member.Handle] = row.Rank
+			}
+		}
+
+		fmt.Println("RankMap Size:", len(rankMap))
+
+		// Print a few samples
+		sample := 0
+		for h, r := range rankMap {
+			fmt.Printf("Sample => %s rank=%d\n", h, r)
+			sample++
+			if sample == 3 {
+				break
+			}
+		}
+
+		matchCount := 0
+
 		for _, user := range users {
 
-			userRank := 0
-
-			for _, row := range standings.Result.Rows {
-				for _, m := range row.Party.Members {
-					if m.Handle == user.Handle {
-						userRank = row.Rank
-						break
-					}
-				}
-				if userRank > 0 {
-					break
-				}
-			}
+			userRank := rankMap[user.Handle]
 
 			points := 0
 			if userRank > 0 {
 				points = calculatePoints(userRank, total, div)
+				matchCount++
 			}
 
 			_, err = db.Exec(
-				`INSERT OR REPLACE INTO user_contest_results 
-				(user_id, contest_id, rank, points, last_updated) 
+				`INSERT OR REPLACE INTO user_contest_results
+				(user_id, contest_id, rank, points, last_updated)
 				VALUES (?, ?, ?, ?, strftime('%s','now'))`,
-				user.ID, contest.ID, userRank, points,
+				user.ID,
+				contest.ID,
+				userRank,
+				points,
 			)
 
 			if err != nil {
-				log.Println("Failed to update result for user", user.Handle, "contest", contest.CFID, err)
+				fmt.Printf(
+					"DB INSERT ERROR user=%s contest=%d err=%v\n",
+					user.Handle,
+					contest.CFID,
+					err,
+				)
 			}
 		}
+
+		fmt.Println(
+			"Contest processed successfully. Matches found:",
+			matchCount,
+		)
 	}
+
+	fmt.Printf("================ REFRESH ENDED ================\n")
 
 	return nil
 }
