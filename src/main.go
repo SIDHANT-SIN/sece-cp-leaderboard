@@ -230,7 +230,6 @@ if err != nil {
 fmt.Println("Contest ID:", cfid)
 fmt.Println("Status Code:", resp.StatusCode)
 
-resp.Body.Close()
 if resp.StatusCode != 200 {
 
 	if resp.StatusCode >= 500 {
@@ -261,6 +260,11 @@ if resp.StatusCode != 200 {
 			} `json:"result"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&apiResp)
+
+resp.Body.Close()
+
+
+		fmt.Printf("%+v\n", apiResp)
 		if err != nil || apiResp.Status != "OK" {
 			c.String(http.StatusBadRequest, "Could not parse contest info from Codeforces")
 			return

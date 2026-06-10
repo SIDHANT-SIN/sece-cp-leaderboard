@@ -121,7 +121,7 @@
                     <th class="user-col">User</th>
                     <th class="points-col">Total Points</th>
                     {{ range .contests }}
-                        <th><a href="https://codeforces.com/contest/{{ .id }}" target="_blank" style="color:#00e1ff;text-decoration:underline;">{{ .name }}</a></th>
+                        <th><a href="https://codeforces.com/contest/{{ .cfid }}" target="_blank" style="color:#00e1ff;text-decoration:underline;">{{ .name }}</a></th>
                     {{ end }}
                 </tr>
                 
