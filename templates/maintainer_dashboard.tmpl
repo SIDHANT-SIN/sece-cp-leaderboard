@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
+    <title>Maintainer Dashboard</title>
     <style>
         body {
             background: #181a20;
@@ -86,10 +86,10 @@
             content: '👤';
         }
         .menu a:nth-child(2)::after {
-            content: '🏆';
+            content: '💻';
         }
         .menu a:nth-child(3)::after {
-            content: '📊';
+            content: '🔙';
         }
         .button-container {
             display: flex;
@@ -134,27 +134,8 @@
             transform: translateY(-3px);
             box-shadow: 0 8px 25px rgba(34, 157, 214, 0.72);
         }
-        .logout-btn {
-            display: inline-block;
-            width: 260px;
-            padding: 16px;
-            background: linear-gradient(145deg, #d41e1e, #ff3b3b);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-weight: bold;
-            font-size: 1.1rem;
-            text-align: center;
-            text-decoration: none;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(255, 59, 59, 0.3);
-        }
-        .logout-btn:hover {
-            background: linear-gradient(145deg, #ff3b3b, #d41e1e);
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(255, 59, 59, 0.4);
-        }
+
+     
         .error {
             background: rgba(255, 59, 59, 0.1);
             color: #ff0000;
@@ -196,26 +177,24 @@
 </head>
 <body>
     <div class="container">
-        <h1>Admin Dashboard</h1>
+        <h1>Maintainer Dashboard</h1>
         <div class="menu">
-            <a href="/admin/users"><span style="font-size: 1.8rem; margin-bottom: 10px;">👤</span> Manage Users</a>
-            <a href="/admin/contests"><span style="font-size: 1.8rem; margin-bottom: 10px;">🏆</span> Manage Contests</a>
-            <a href="/leaderboard"><span style="font-size: 1.8rem; margin-bottom: 10px;">📊</span> View Leaderboard</a>
+            <a href="/maintainer/users"><span style="font-size: 1.8rem; margin-bottom: 10px;">👤</span> Manage Past Users</a>
+            <a href="/maintainer/icpc_pyq"><span style="font-size: 1.8rem; margin-bottom: 10px;">💻</span> Manage ICPC Questions</a>
+            <a href="/admin"><span style="font-size: 1.8rem; margin-bottom: 10px;">🔙</span> Back to Admin</a>
         </div>
         
     <div class="button-container">
     
-    <form action="/admin/refresh_results" method="post" style="margin: 0;">
+    <form action="/maintainer/refresh_rating" method="post" style="margin: 0;">
         <button type="submit" class="refresh-btn">
-            Refresh All User Results
+            Refresh All Past User Rating
         </button>
     </form>
 
    <button type="button" class="api-btn" onclick="checkCFAPI()">
     Check Codeforces API
 </button>
-
-    <a href="/logout" class="logout-btn">Logout</a>
 
    {{if .error}}
             <div class="error">{{.error}}</div>

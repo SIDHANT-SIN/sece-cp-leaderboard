@@ -1,0 +1,229 @@
+{{ define "maintainer_icpc.tmpl" }}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintainer - Add ICPC Problem</title>
+
+    <style>
+        body {
+            background: #181a20;
+            color: #eaeaea;
+            font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: #23272f;
+            border-radius: 18px;
+            box-shadow: 0 4px 32px #000a;
+            padding: 32px;
+        }
+
+        h1, h2 {
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        h1 {
+            margin-top: 16px;
+            font-size: 2.2rem;
+            color: #aa3fff;
+            text-shadow: 0 2px 8px rgba(170, 63, 255, 0.3);
+        }
+
+        h2 {
+            margin: 32px 0 16px;
+            font-size: 1.5rem;
+            color: #17b897;
+        }
+
+        .form-container {
+            background: #2a2e3a;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            background: #32363f;
+            border: none;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            border-radius: 6px;
+            color: white;
+            font-size: 1rem;
+        }
+
+        textarea {
+            min-height: 140px;
+            resize: vertical;
+        }
+
+        button {
+            background: #aa3fff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #be6fff;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 24px;
+            color: #aa3fff;
+            text-decoration: none;
+            font-weight: bold;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: #be6fff;
+        }
+
+        .limit-row {
+            display: flex;
+            gap: 16px;
+        }
+
+        .limit-row input {
+            flex: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <h1>Add ICPC Problem</h1>
+
+        <div class="form-container">
+
+            <form method="POST" action="/maintainer/icpc_pyq">
+
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="Problem Name"
+                    required
+                >
+
+                <textarea
+                    name="statement"
+                    placeholder="Problem Statement"
+                    required
+                ></textarea>
+
+                <div class="limit-row">
+                    <input
+                        type="number"
+                        name="time_limit"
+                        placeholder="Time Limit (default 1 second)"
+                    >
+
+                    <input
+                        type="number"
+                        name="memory_limit"
+                        placeholder="Memory Limit (default 256 MB)"
+                    >
+                </div>
+
+                <textarea
+                    name="input_desc"
+                    placeholder="Input Description"
+                    required
+                ></textarea>
+
+                <textarea
+                    name="output_desc"
+                    placeholder="Output Description"
+                    required
+                ></textarea>
+
+                <textarea
+                    name="constraint"
+                    placeholder="Constraint"
+                    required
+                ></textarea>
+
+                <textarea
+                    name="sample_input"
+                    placeholder="Sample Input"
+                    required
+                ></textarea>
+
+                    <textarea
+                    name="sample_output"
+                    placeholder="Sample Output"
+                    required
+                ></textarea>
+
+                    <textarea
+                    name="explanation"
+                    placeholder="Explanation"
+                    required
+                ></textarea>
+
+                <textarea
+                    name="solution_code"
+                    placeholder='Test Case Solution Output:
+
+[
+  {
+    "output": "5"
+  },
+  {
+    "output": "30"
+  }
+]'
+                    required
+                ></textarea>
+
+                <textarea
+                    name="testcases"
+                    placeholder='Testcases JSON
+
+Example:
+
+[
+  {
+    "input":"2 3"
+  },
+  {
+    "input":"10 20"
+  }
+]'
+                    required
+                ></textarea>
+
+                <button type="submit">
+                    Add Problem
+                </button>
+
+            </form>
+
+        </div>
+
+        <a href="/maintainer/dashboard" class="back-link">
+            ← Back to Dashboard
+        </a>
+
+    </div>
+</body>
+</html>
+{{ end }}
