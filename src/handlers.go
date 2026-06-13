@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/sha256"
-	
+	"leaderboard/src/storage"
+	"leaderboard/src/utils"
+
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	
+
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
 
@@ -140,122 +142,110 @@ r.GET("/maintainer/dashboard", func(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/admin")
 	})
 
-	r.POST("/maintainer/icpc_pyq", func(c *gin.Context) {
+// 	
 
-	cookie, err := c.Cookie("maintainer_logged_in")
-	if err != nil || cookie != "true" {
-		c.Redirect(http.StatusSeeOther, "/maintainer")
-		return
-	}
 
-	title := c.PostForm("title")
-	statement := c.PostForm("statement")
-	inputDesc := c.PostForm("input_desc")
-	outputDesc := c.PostForm("output_desc")
-	constraints := c.PostForm("constraints")
-	sampleInput := c.PostForm("sample_input")
-	sampleOutput := c.PostForm("sample_output")
-    explanation := c.PostForm("explanation")
-	solutionCode := c.PostForm("solution_code")
-	testcaseJSON := c.PostForm("testcases")
+// without jdoodle
 
-	timeLimit := c.PostForm("time_limit")
-	memoryLimit := c.PostForm("memory_limit")
+r.POST("/maintainer/icpc_pyq", func(c *gin.Context) {
 
-	if timeLimit == "" {
-		timeLimit = "1"
-	}
+cookie, err := c.Cookie("maintainer_logged_in")
+if err != nil || cookie != "true" {
+	c.Redirect(http.StatusSeeOther, "/maintainer")
+	return
+}
 
-	if memoryLimit == "" {
-		memoryLimit = "256"
-	}
+// FORM DATA
+title := c.PostForm("title")
+statement := c.PostForm("statement")
 
-	testcases, err := ParseTestCases(testcaseJSON)
+inputDesc := c.PostForm("input_desc")
+outputDesc := c.PostForm("output_desc")
+constraints := c.PostForm("constraints")
+
+sampleInput := c.PostForm("sample_input")
+sampleOutput := c.PostForm("sample_output")
+explanation := c.PostForm("explanation")
+
+timeLimit := c.PostForm("time_limit")
+memoryLimit := c.PostForm("memory_limit")
+
+if timeLimit == "" {
+	timeLimit = "1"
+}
+if memoryLimit == "" {
+	memoryLimit = "256"
+}
+
+// TESTCASES
+testcaseJSON := c.PostForm("testcases")
+testcases, err := utils.ParseTestCases(testcaseJSON)
+if err != nil {
+	c.String(400, "Invalid testcases JSON")
+	return
+}
+
+
+res, err := db.Exec(`
+INSERT INTO icpc_pyq (
+	title, statement,
+	time_limit, memory_limit,
+	input_desc, output_desc,
+	constraints,
+	sample_input, sample_output,
+	explanation
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`,
+title, statement,
+timeLimit, memoryLimit,
+inputDesc, outputDesc,
+constraints,
+sampleInput, sampleOutput,
+explanation,
+)
+
+if err != nil {
+	c.String(500, "DB insert failed")
+	return
+}
+
+problemID, _ := res.LastInsertId()
+
+
+
+for i, tc := range testcases {
+
+	inputPath := fmt.Sprintf("problems/%d/tc_%d/input.txt", problemID, i)
+
+	inputURL, err := storage.UploadFile(inputPath, []byte(tc.Input))
 	if err != nil {
-		c.String(http.StatusBadRequest, "Invalid testcase JSON")
+		c.String(500, "Azure upload failed")
 		return
 	}
 
-	res, err := db.Exec(`
-		INSERT INTO icpc_pyq (
-			title,
-			statement,
-			time_limit,
-			memory_limit,
-			input_desc,
-			output_desc,
-			constraints,
-			sample_input,
-			sample_output,
-			explanation,
-			solution_code
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err = db.Exec(`
+	INSERT INTO icpc_testcases (
+		problem_id,
+		testcase_input
+	)
+	VALUES (?, ?)
 	`,
-		title,
-		statement,
-		timeLimit,
-		memoryLimit,
-		inputDesc,
-		outputDesc,
-		constraints,
-		sampleInput,
-		sampleOutput,
-		explanation,
-		solutionCode,
+	problemID,
+	inputURL,
 	)
 
 	if err != nil {
-		c.String(http.StatusBadRequest,
-			"Could not add problem: "+err.Error())
+		c.String(500, "DB testcase insert failed")
 		return
 	}
+}
 
-	problemID, err := res.LastInsertId()
-	if err != nil {
-		c.String(http.StatusInternalServerError,
-			"Could not get problem id")
-		return
-	}
 
-	for _, tc := range testcases {
-
-		output, err := RunSolution(
-			solutionCode,
-			tc.Input,
-		)
-
-		if err != nil {
-			c.String(http.StatusBadRequest,
-				"JDoodle Error: "+err.Error())
-			return
-		}
-
-		_, err = db.Exec(`
-			INSERT INTO icpc_testcases (
-				problem_id,
-				testcase_input,
-				testcase_output
-			)
-			VALUES (?, ?, ?)
-		`,
-			problemID,
-			tc.Input,
-			output,
-		)
-
-		if err != nil {
-			c.String(http.StatusBadRequest,
-				"Could not save testcase: "+err.Error())
-			return
-		}
-	}
-
-	c.Redirect(
-		http.StatusSeeOther,
-		"/maintainer/icpc_pyq",
-	)
+c.Redirect(http.StatusSeeOther, "/maintainer/icpc_pyq")
 })
+
+
+
 
 	r.POST("/admin/users/delete", func(c *gin.Context) {
 		cookie, err := c.Cookie("admin_logged_in")

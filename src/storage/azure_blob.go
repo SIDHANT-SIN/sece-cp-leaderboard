@@ -7,9 +7,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 )
 
-var containerClient *azblob.ContainerClient
+var blobClient *azblob.Client
+var activeContainer string // We will store your .env container name here
 
-func InitAzure(account, key string) error {
+// Now we accept the container name as a parameter
+func InitAzure(account, key, containerName string) error {
 	cred, err := azblob.NewSharedKeyCredential(account, key)
 	if err != nil {
 		return err
@@ -17,22 +19,23 @@ func InitAzure(account, key string) error {
 
 	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", account)
 
-	serviceClient, err := azblob.NewServiceClientWithSharedKey(serviceURL, cred, nil)
+	client, err := azblob.NewClientWithSharedKeyCredential(serviceURL, cred, nil)
 	if err != nil {
 		return err
 	}
 
-	containerClient = serviceClient.NewContainerClient("icpc-testcases")
+	blobClient = client
+	activeContainer = containerName // Save your specific container name
 	return nil
 }
 
 func UploadFile(path string, data []byte) (string, error) {
-	blob := containerClient.NewBlockBlobClient(path)
-
-	_, err := blob.UploadBuffer(context.TODO(), data, nil)
+	// Use the dynamic activeContainer variable instead of a hardcoded string
+	_, err := blobClient.UploadBuffer(context.TODO(), activeContainer, path, data, nil)
 	if err != nil {
 		return "", err
 	}
 
-	return blob.URL(), nil
+	blobURL := fmt.Sprintf("%s%s/%s", blobClient.URL(), activeContainer, path)
+	return blobURL, nil
 }
