@@ -8,9 +8,9 @@ import (
 )
 
 var blobClient *azblob.Client
-var activeContainer string // We will store your .env container name here
+var activeContainer string 
 
-// Now we accept the container name as a parameter
+
 func InitAzure(account, key, containerName string) error {
 	cred, err := azblob.NewSharedKeyCredential(account, key)
 	if err != nil {
@@ -25,12 +25,12 @@ func InitAzure(account, key, containerName string) error {
 	}
 
 	blobClient = client
-	activeContainer = containerName // Save your specific container name
+	activeContainer = containerName 
 	return nil
 }
 
 func UploadFile(path string, data []byte) (string, error) {
-	// Use the dynamic activeContainer variable instead of a hardcoded string
+	
 	_, err := blobClient.UploadBuffer(context.TODO(), activeContainer, path, data, nil)
 	if err != nil {
 		return "", err

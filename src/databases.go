@@ -96,11 +96,11 @@ CREATE TABLE IF NOT EXISTS icpc_pyq (
 
 	explanation TEXT,
 
-    solution_code TEXT NOT NULL,
-
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 `)
+
+
 if err != nil {
     log.Fatal("Failed to create icpc_pyq table:", err)
 }

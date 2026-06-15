@@ -1,22 +1,20 @@
 package main
 
 import (
-	
-	
-
 	"encoding/json"
 	"fmt"
-    "io"
-	"github.com/gin-gonic/gin"
+	"io"
 	"math"
 	"net/http"
-	
+
+	"github.com/gin-gonic/gin"
+
 	"strings"
 	"time"
-    "bytes"
-	"os"
 
-	
+	// "bytes"
+	// "os"
+
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
 
@@ -39,72 +37,72 @@ func ParseTestCases(raw string) ([]TestCase, error) {
 
 
 
-type JDoodleRequest struct {
-	ClientID     string `json:"clientId"`
-	ClientSecret string `json:"clientSecret"`
-	Script       string `json:"script"`
-	Stdin        string `json:"stdin"`
-	Language     string `json:"language"`
-	VersionIndex string `json:"versionIndex"`
-	CompileOnly  bool   `json:"compileOnly"`
-}
+// type JDoodleRequest struct {
+// 	ClientID     string `json:"clientId"`
+// 	ClientSecret string `json:"clientSecret"`
+// 	Script       string `json:"script"`
+// 	Stdin        string `json:"stdin"`
+// 	Language     string `json:"language"`
+// 	VersionIndex string `json:"versionIndex"`
+// 	CompileOnly  bool   `json:"compileOnly"`
+// }
 
-type JDoodleResponse struct {
-	Output             string      `json:"output"`
-	Error              interface{} `json:"error"`
-	StatusCode         int         `json:"statusCode"`
-	Memory             string      `json:"memory"`
-	CPUTime            interface{} `json:"cpuTime"`
-	CompilationStatus  interface{} `json:"compilationStatus"`
-	IsExecutionSuccess bool        `json:"isExecutionSuccess"`
-	IsCompiled         bool        `json:"isCompiled"`
-}
+// type JDoodleResponse struct {
+// 	Output             string      `json:"output"`
+// 	Error              interface{} `json:"error"`
+// 	StatusCode         int         `json:"statusCode"`
+// 	Memory             string      `json:"memory"`
+// 	CPUTime            interface{} `json:"cpuTime"`
+// 	CompilationStatus  interface{} `json:"compilationStatus"`
+// 	IsExecutionSuccess bool        `json:"isExecutionSuccess"`
+// 	IsCompiled         bool        `json:"isCompiled"`
+// }
 
-func RunSolution(code string, input string) (string, error) {
+// func RunSolution(code string, input string) (string, error) {
 
-	reqBody := JDoodleRequest{
-		ClientID:     os.Getenv("JDOODLE_CLIENT_ID"),
-		ClientSecret: os.Getenv("JDOODLE_CLIENT_SECRET"),
-		Script:       code,
-		Stdin:        input,
-		Language:     "cpp17",
-		VersionIndex: "1",
-		CompileOnly:  false,
-	}
+// 	reqBody := JDoodleRequest{
+// 		ClientID:     os.Getenv("JDOODLE_CLIENT_ID"),
+// 		ClientSecret: os.Getenv("JDOODLE_CLIENT_SECRET"),
+// 		Script:       code,
+// 		Stdin:        input,
+// 		Language:     "cpp17",
+// 		VersionIndex: "1",
+// 		CompileOnly:  false,
+// 	}
 
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
+	// jsonData, err := json.Marshal(reqBody)
+	// if err != nil {
+	// 	return "", err
+	// }
 
-	resp, err := http.Post(
-		"https://api.jdoodle.com/v1/execute",
-		"application/json",
-		bytes.NewBuffer(jsonData),
-	)
+	// resp, err := http.Post(
+	// 	"https://api.jdoodle.com/v1/execute",
+	// 	"application/json",
+	// 	bytes.NewBuffer(jsonData),
+	// )
 
-	if err != nil {
-		return "", err
-	}
+	// if err != nil {
+	// 	return "", err
+// 	}
 
-	defer resp.Body.Close()
+// 	defer resp.Body.Close()
 
-	var result JDoodleResponse
+// 	var result JDoodleResponse
 
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
-		return "", err
-	}
+// 	err = json.NewDecoder(resp.Body).Decode(&result)
+// 	if err != nil {
+// 		return "", err
+// 	}
 
-	if result.StatusCode != 200 {
-		return "", fmt.Errorf(
-			"jdoodle returned status %d",
-			result.StatusCode,
-		)
-	}
+// 	if result.StatusCode != 200 {
+// 		return "", fmt.Errorf(
+// 			"jdoodle returned status %d",
+// 			result.StatusCode,
+// 		)
+// 	}
 
-	return strings.TrimSpace(result.Output), nil
-}
+// 	return strings.TrimSpace(result.Output), nil
+// }
 
 
 
