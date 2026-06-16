@@ -20,7 +20,7 @@ import (
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
 
-func setupRouter() *gin.Engine {
+func setupRouterold() *gin.Engine {
 	admin_username := os.Getenv("ADMIN_USERNAME")
 	admin_password_hash := os.Getenv("ADMIN_PASSWORD")
 	maintainer_password := os.Getenv("MAINTAINER_PASSWORD")

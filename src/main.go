@@ -5,6 +5,7 @@ import (
 
 	"leaderboard/src/configs"
 	"leaderboard/src/database"
+	"leaderboard/src/routes"
 	"leaderboard/src/storage"
 )
 
@@ -26,7 +27,7 @@ func main() {
 
 	log.Println("Successfully connected to Azure Blob Storage!")
 
-	r := setupRouter()
+	r := routes.SetupRoutes()
 
 	port := cfg.Port
 

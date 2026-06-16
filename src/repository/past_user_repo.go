@@ -41,3 +41,12 @@ func DeletePastUser(id string) error {
 
 	return err
 }
+
+func GetPastUsersByBatch(batch string) (*sql.Rows, error) {
+	return database.DB.Query(`
+		SELECT id, codeforces_handle, display_name,
+		       current_rating, max_rating, title, batch_year
+		FROM past_users
+		WHERE batch_year = ?
+	`, batch)
+}
