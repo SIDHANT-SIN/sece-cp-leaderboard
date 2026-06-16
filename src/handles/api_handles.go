@@ -80,3 +80,10 @@ func CheckCFAPI(c *gin.Context) {
 		"message": "Codeforces API is alive",
 	})
 }
+
+
+func SendPing(c *gin.Context) {
+	c.String(http.StatusOK, "pong");
+}
+
+

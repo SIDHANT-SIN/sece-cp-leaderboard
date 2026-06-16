@@ -75,5 +75,8 @@ func SetupRoutes() *gin.Engine {
 	// Refresh rating route
 	r.POST("/maintainer/refresh_rating", handles.RefreshRating)
 
+	//health checks
+	r.GET("/health/ping", handles.SendPing)
+
 	return r
 }
