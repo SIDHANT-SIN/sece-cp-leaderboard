@@ -108,6 +108,8 @@ func AddContest(c *gin.Context) {
 		return
 	}
 
+	rebuildLeaderboardCache()
+
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
 
@@ -135,6 +137,8 @@ func DeleteContest(c *gin.Context) {
 		return
 	}
 
+	rebuildLeaderboardCache()
+
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
 
@@ -157,6 +161,8 @@ func DeleteAllContests(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Could not delete all contests: %v", err)
 		return
 	}
+
+	rebuildLeaderboardCache()
 
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
@@ -191,6 +197,8 @@ func RefreshResults(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Failed to refresh results: %v", err)
 		return
 	}
+
+	rebuildLeaderboardCache()
 
 	c.Redirect(http.StatusSeeOther, "/leaderboard")
 }
@@ -318,105 +326,109 @@ func refreshAllUserContestResults() error {
 	fmt.Println("Contests loaded:", len(contests))
 
 	for _, contest := range contests {
-		fmt.Println("\n--------------------------------")
-		fmt.Println("Processing contest:", contest.CFID)
+		func() {
+			reqStartTime := time.Now()
+			defer func() {
+				elapsed := time.Since(reqStartTime)
+				if elapsed < 2*time.Second {
+					time.Sleep((2100 * time.Millisecond) - elapsed)
+				}
+			}()
 
-		url := "https://codeforces.com/api/contest.standings?contestId=" + fmt.Sprint(contest.CFID)
-		fmt.Println("API URL:", url)
+			fmt.Println("\n--------------------------------")
+			fmt.Println("Processing contest:", contest.CFID)
 
-		time.Sleep(2 * time.Second)
+			url := "https://codeforces.com/api/contest.ratingChanges?contestId=" + fmt.Sprint(contest.CFID)
+			fmt.Println("API URL:", url)
 
-		resp, err := http.Get(url)
-		if err != nil {
-			fmt.Println("HTTP ERROR:", err)
-			continue
-		}
-
-		fmt.Println("HTTP Status:", resp.StatusCode)
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			fmt.Println("Skipping contest because status != 200")
-			continue
-		}
-
-		var standings struct {
-			Status string `json:"status"`
-			Result struct {
-				Contest struct {
-					Name string `json:"name"`
-				} `json:"contest"`
-				Rows []struct {
-					Party struct {
-						Members []struct {
-							Handle string `json:"handle"`
-						} `json:"members"`
-					} `json:"party"`
-					Rank int `json:"rank"`
-				} `json:"rows"`
-			} `json:"result"`
-		}
-
-		err = json.NewDecoder(resp.Body).Decode(&standings)
-		resp.Body.Close()
-
-		if err != nil {
-			fmt.Println("JSON Decode Error:", err)
-			continue
-		}
-
-		fmt.Println("CF Status:", standings.Status)
-		if standings.Status != "OK" {
-			fmt.Println("CF returned FAILED")
-			continue
-		}
-
-		fmt.Println("Contest Name:", standings.Result.Contest.Name)
-		total := len(standings.Result.Rows)
-		fmt.Println("Rows Returned:", total)
-
-		if total == 0 {
-			fmt.Println("No standings rows returned")
-			continue
-		}
-
-		// Detect division
-		div := "Div. 1"
-		if strings.Contains(standings.Result.Contest.Name, "Div. 2") {
-			div = "Div. 2"
-		} else if strings.Contains(standings.Result.Contest.Name, "Div. 3") {
-			div = "Div. 3"
-		} else if strings.Contains(standings.Result.Contest.Name, "Div. 4") {
-			div = "Div. 4"
-		}
-
-		fmt.Println("Division:", div)
-
-		// Build handle -> rank map
-		rankMap := make(map[string]int)
-		for _, row := range standings.Result.Rows {
-			for _, member := range row.Party.Members {
-				rankMap[member.Handle] = row.Rank
-			}
-		}
-
-		fmt.Println("RankMap Size:", len(rankMap))
-
-		matchCount := 0
-		for _, user := range users {
-			userRank := rankMap[user.Handle]
-			points := 0
-			if userRank > 0 {
-				points = calculatePoints(userRank, total, div)
-				matchCount++
-			}
-
-			err = repository.UpsertResult(user.ID, contest.ID, userRank, points)
+			resp, err := http.Get(url)
 			if err != nil {
-				fmt.Printf("DB INSERT ERROR user=%s contest=%d err=%v\n", user.Handle, contest.CFID, err)
+				fmt.Println("HTTP ERROR:", err)
+				return
 			}
-		}
 
-		fmt.Println("Contest processed successfully. Matches found:", matchCount)
+			fmt.Println("HTTP Status:", resp.StatusCode)
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				fmt.Println("Skipping contest because status != 200")
+				return
+			}
+
+			var ratingChanges struct {
+				Status string `json:"status"`
+				Result []struct {
+					ContestId               int    `json:"contestId"`
+					ContestName             string `json:"contestName"`
+					Handle                  string `json:"handle"`
+					Rank                    int    `json:"rank"`
+					RatingUpdateTimeSeconds int64  `json:"ratingUpdateTimeSeconds"`
+					OldRating               int    `json:"oldRating"`
+					NewRating               int    `json:"newRating"`
+				} `json:"result"`
+			}
+
+			err = json.NewDecoder(resp.Body).Decode(&ratingChanges)
+			resp.Body.Close()
+
+			if err != nil {
+				fmt.Println("JSON Decode Error:", err)
+				return
+			}
+
+			fmt.Println("CF Status:", ratingChanges.Status)
+			if ratingChanges.Status != "OK" {
+				fmt.Println("CF returned FAILED")
+				return
+			}
+
+			total := len(ratingChanges.Result)
+			fmt.Println("Rows Returned:", total)
+
+			if total == 0 {
+				fmt.Println("No standings rows returned")
+				return
+			}
+
+			contestName := ratingChanges.Result[0].ContestName
+			fmt.Println("Contest Name:", contestName)
+
+			// Detect division
+			div := "Div. 1"
+			if strings.Contains(contestName, "Div. 2") {
+				div = "Div. 2"
+			} else if strings.Contains(contestName, "Div. 3") {
+				div = "Div. 3"
+			} else if strings.Contains(contestName, "Div. 4") {
+				div = "Div. 4"
+			}
+
+			fmt.Println("Division:", div)
+
+			// Build handle -> rank map
+			rankMap := make(map[string]int)
+			for _, row := range ratingChanges.Result {
+				rankMap[row.Handle] = row.Rank
+			}
+
+			fmt.Println("RankMap Size:", len(rankMap))
+
+			matchCount := 0
+			for _, user := range users {
+				userRank := rankMap[user.Handle]
+				points := 0
+				if userRank > 0 {
+					points = calculatePoints(userRank, total, div)
+					matchCount++
+				}
+
+				err = repository.UpsertResult(user.ID, contest.ID, userRank, points)
+				if err != nil {
+					fmt.Printf("DB INSERT ERROR user=%s contest=%d err=%v\n", user.Handle, contest.CFID, err)
+				}
+			}
+
+			fmt.Println("Contest processed successfully. Matches found:", matchCount)
+		}()
 	}
 
 	fmt.Printf("================ REFRESH ENDED ================\n")

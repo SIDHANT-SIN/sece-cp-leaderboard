@@ -1,16 +1,39 @@
 package handles
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
-
+     
 	"leaderboard/src/repository"
-
+      
 	"github.com/gin-gonic/gin"
 )
 
 // ShowLeaderboard renders the primary leaderboard with ranked active users
 func ShowLeaderboard(c *gin.Context) {
+	// 1. Attempt to fetch leaderboard data from Upstash Redis Cache
+//	st := time.Now()
+
+	cachedUsers, cachedContests, cachedResults, cachedUserTotals, err := repository.GetLeaderboardCache()
+	if err == nil && cachedUsers != nil && len(cachedUsers) > 0 {
+		fmt.Printf("cache hit")
+		
+          
+
+    //     log.Printf("Redis GET took %v", time.Since(st))
+		c.HTML(http.StatusOK, "leaderboard.tmpl", gin.H{
+			"users":      cachedUsers,
+			"contests":   cachedContests,
+			"results":    cachedResults,
+			"userTotals": cachedUserTotals,
+		})
+		return
+	}
+
+	// 2. Cache Miss: Retrieve from database
+
+	fmt.Printf("cache miss")
 	userRows, err := repository.GetUsers()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "DB error")
@@ -50,7 +73,6 @@ func ShowLeaderboard(c *gin.Context) {
 		})
 	}
 
-	// Query results for each user in each contest
 	results := make(map[int]map[int]map[string]interface{}) // user_id -> contest_id -> result
 	userTotals := make(map[int]int)                         // user_id -> total points
 
@@ -61,7 +83,6 @@ func ShowLeaderboard(c *gin.Context) {
 			var userID, contestID, rank, points int
 			rows.Scan(&userID, &contestID, &rank, &points)
 
-			// Only sum points for contests that are currently in the DB
 			contestExists := false
 			for _, c := range contests {
 				if c["id"].(int) == contestID {
@@ -108,6 +129,15 @@ func ShowLeaderboard(c *gin.Context) {
 		rankedUsers[i]["rank"] = i + 1
 		rankedUsers[i]["total_points"] = ut.Total
 	}
+
+	// Save computed values to Redis cache asynchronously or silently ignore errors
+	err = repository.SetLeaderboardCache(rankedUsers, contests, results, userTotals)
+	if err != nil {
+		fmt.Printf("Warning: failed to save leaderboard cache: %v\n", err)
+	}
+	
+	fmt.Printf("cache saved")
+	
 
 	c.HTML(http.StatusOK, "leaderboard.tmpl", gin.H{
 		"users":      rankedUsers,
@@ -161,4 +191,101 @@ func ShowPastLeaderboard(c *gin.Context) {
 		"users":         users,
 		"selectedBatch": batch,
 	})
+}
+
+// rebuildLeaderboardCache recalculates the entire leaderboard and stores it in Redis
+func rebuildLeaderboardCache() error {
+	userRows, err := repository.GetUsers()
+	if err != nil {
+		return err
+	}
+	defer userRows.Close()
+
+	var users []map[string]interface{}
+	for userRows.Next() {
+		var id int
+		var handle, displayName string
+		userRows.Scan(&id, &handle, &displayName)
+		users = append(users, map[string]interface{}{
+			"id":           id,
+			"handle":       handle,
+			"display_name": displayName,
+		})
+	}
+
+	contestRows, err := repository.GetContests()
+	if err != nil {
+		return err
+	}
+	defer contestRows.Close()
+
+	var contests []map[string]interface{}
+	for contestRows.Next() {
+		var id, cfid, startTime int
+		var name string
+		contestRows.Scan(&id, &cfid, &name, &startTime)
+		contests = append(contests, map[string]interface{}{
+			"id":         id,
+			"cfid":       cfid,
+			"name":       name,
+			"start_time": startTime,
+		})
+	}
+
+	results := make(map[int]map[int]map[string]interface{})
+	userTotals := make(map[int]int)
+
+	rows, err := repository.GetAllResults()
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var userID, contestID, rank, points int
+			rows.Scan(&userID, &contestID, &rank, &points)
+
+			contestExists := false
+			for _, c := range contests {
+				if c["id"].(int) == contestID {
+					contestExists = true
+					break
+				}
+			}
+			if !contestExists {
+				continue
+			}
+
+			if results[userID] == nil {
+				results[userID] = make(map[int]map[string]interface{})
+			}
+			results[userID][contestID] = map[string]interface{}{
+				"rank":   rank,
+				"points": points,
+			}
+			userTotals[userID] += points
+		}
+	}
+
+	type userWithTotal struct {
+		User  map[string]interface{}
+		Total int
+	}
+
+	var userList []userWithTotal
+	for _, u := range users {
+		uid := u["id"].(int)
+		total := userTotals[uid]
+		userList = append(userList, userWithTotal{User: u, Total: total})
+	}
+
+	sort.Slice(userList, func(i, j int) bool {
+		return userList[i].Total > userList[j].Total
+	})
+
+	rankedUsers := make([]map[string]interface{}, len(userList))
+	for i, ut := range userList {
+		rankedUsers[i] = ut.User
+		rankedUsers[i]["rank"] = i + 1
+		rankedUsers[i]["total_points"] = ut.Total
+	}
+
+	return repository.SetLeaderboardCache(rankedUsers, contests, results, userTotals)
 }
