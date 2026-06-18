@@ -70,6 +70,8 @@ func AddUser(c *gin.Context) {
 		return
 	}
 
+	rebuildLeaderboardCache()
+
 	c.Redirect(http.StatusSeeOther, "/admin")
 }
 
@@ -87,6 +89,8 @@ func DeleteUser(c *gin.Context) {
 		c.String(http.StatusBadRequest, "Could not delete user: %v", err)
 		return
 	}
+
+	rebuildLeaderboardCache()
 
 	c.Redirect(http.StatusSeeOther, "/admin/users")
 }

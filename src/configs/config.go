@@ -20,6 +20,8 @@ type Config struct {
 
 	DBUrl     string
 	AuthToken string
+
+	RedisURL string
 }
 
 func LoadConfig() *Config {
@@ -41,5 +43,7 @@ func LoadConfig() *Config {
 
 		DBUrl:     os.Getenv("TURSO_DATABASE_URL"),
 		AuthToken: os.Getenv("TURSO_AUTH_TOKEN"),
+
+		RedisURL: os.Getenv("REDIS_URL"),
 	}
 }

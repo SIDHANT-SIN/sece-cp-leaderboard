@@ -16,6 +16,8 @@ func main() {
 
 	database.CreateTables()
 
+	database.ConnectRedis(cfg)
+
 	err := storage.InitAzure(
 		cfg.AccountName,
 		cfg.AccountKey,
