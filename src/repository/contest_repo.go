@@ -25,10 +25,21 @@ func AddContest(cfID int, name string, startTime int64) error {
 
 // DeleteContest deletes a contest by id
 func DeleteContest(id string) error {
-	_, err := database.DB.Exec(`
+
+	_, err := database.DB.Exec(
+		`DELETE FROM user_contest_results WHERE contest_id = ?`,
+		id,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	_, err = database.DB.Exec(`
 		DELETE FROM contests 
 		WHERE id = ?
 	`, id)
+
 	return err
 }
 

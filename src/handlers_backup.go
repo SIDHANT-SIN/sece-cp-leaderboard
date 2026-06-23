@@ -2,8 +2,8 @@ package main
 
 import (
 	"crypto/sha256"
-    "leaderboard/src/storage"
-	"leaderboard/src/utils"
+   // "leaderboard/src/storage"
+//	"leaderboard/src/utils"
 
 	"encoding/hex"
 	"encoding/json"
@@ -155,74 +155,74 @@ r.POST("/maintainer/icpc_pyq", func(c *gin.Context) {
 		return
 	}
 
-	// --- 1. GATHER FORM DATA ---
-	title := c.PostForm("title")
-	statement := c.PostForm("statement")
-	inputDesc := c.PostForm("input_desc")
-	outputDesc := c.PostForm("output_desc")
-	constraints := c.PostForm("constraints")
-	sampleInput := c.PostForm("sample_input")
-	sampleOutput := c.PostForm("sample_output")
-	explanation := c.PostForm("explanation")
+	// // --- 1. GATHER FORM DATA ---
+	// title := c.PostForm("title")
+	// statement := c.PostForm("statement")
+	// inputDesc := c.PostForm("input_desc")
+	// outputDesc := c.PostForm("output_desc")
+	// constraints := c.PostForm("constraints")
+	// sampleInput := c.PostForm("sample_input")
+	// sampleOutput := c.PostForm("sample_output")
+	// explanation := c.PostForm("explanation")
 	
-	timeLimit := c.PostForm("time_limit")
-	memoryLimit := c.PostForm("memory_limit")
+	// timeLimit := c.PostForm("time_limit")
+	// memoryLimit := c.PostForm("memory_limit")
 
-	if timeLimit == "" {
-		timeLimit = "1"
-	}
-	if memoryLimit == "" {
-		memoryLimit = "256"
-	}
+	// if timeLimit == "" {
+	// 	timeLimit = "1"
+	// }
+	// if memoryLimit == "" {
+	// 	memoryLimit = "256"
+	// }
 
-	// --- 2. PARSE TESTCASES (Inputs) ---
-	testcaseJSON := c.PostForm("testcases")
-	testcases, err := utils.ParseTestCases(testcaseJSON)
-	if err != nil {
-		c.String(400, "Invalid testcases JSON")
-		return
-	}
+	// // --- 2. PARSE TESTCASES (Inputs) ---
+	// testcaseJSON := c.PostForm("testcases")
+	// testcases, err := utils.ParseTestCases(testcaseJSON)
+	// if err != nil {
+	// 	c.String(400, "Invalid testcases JSON")
+	// 	return
+	// }
 
-	// --- 3. PARSE SOLUTIONS (Outputs) ---
-	solutionJSON := c.PostForm("solution_code")
-	solutions, err := utils.ParseSolutions(solutionJSON)
-	if err != nil {
-		c.String(400, "Invalid solution JSON")
-		return
-	}
+	// // --- 3. PARSE SOLUTIONS (Outputs) ---
+	// solutionJSON := c.PostForm("solution_code")
+	// solutions, err := utils.ParseSolutions(solutionJSON)
+	// if err != nil {
+	// 	c.String(400, "Invalid solution JSON")
+	// 	return
+	// }
 
-	// Safety check: Make sure no one messed up the form submission
-	if len(testcases) != len(solutions) {
-		c.String(400, "Mismatch: Number of inputs does not match number of outputs")
-		return
-	}
+	// // Safety check: Make sure no one messed up the form submission
+	// if len(testcases) != len(solutions) {
+	// 	c.String(400, "Mismatch: Number of inputs does not match number of outputs")
+	// 	return
+	// }
 
 	// --- 4. INSERT PROBLEM INTO DB ---
-	res, err := db.Exec(`
-		INSERT INTO icpc_pyq (
-			title, statement,
-			time_limit, memory_limit,
-			input_desc, output_desc,
-			constraints,
-			sample_input, sample_output,
-			explanation
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		title, statement,
-		timeLimit, memoryLimit,
-		inputDesc, outputDesc,
-		constraints,
-		sampleInput, sampleOutput,
-		explanation,
-	)
+	// res, err := db.Exec(`
+	// 	INSERT INTO icpc_pyq (
+	// 		title, statement,
+	// 		time_limit, memory_limit,
+	// 		input_desc, output_desc,
+	// 		constraints,
+	// 		sample_input, sample_output,
+	// 		explanation
+	// 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	// `,
+	// 	title, statement,
+	// 	timeLimit, memoryLimit,
+	// 	inputDesc, outputDesc,
+	// 	constraints,
+	// 	sampleInput, sampleOutput,
+	// 	explanation,
+	// )
 
-	if err != nil {
-		c.String(500, "DB insert failed")
-		return
-	}
+	// if err != nil {
+	// 	c.String(500, "DB insert failed")
+	// 	return
+	// }
 
 	// Get the ID of the problem we just created so we can use it in our Azure paths
-	problemID, _ := res.LastInsertId()
+//	problemID, _ := res.LastInsertId()
 	//problemID := 67
   
 	// fmt.Printf("RAW TESTCASE JSON FROM FRONTEND: %s\n", testcaseJSON)
@@ -231,53 +231,53 @@ r.POST("/maintainer/icpc_pyq", func(c *gin.Context) {
 
 
 	// --- 5. PROCESS TESTCASES ---
-	for i := range testcases {
+//	for i := range testcases {
 
 		//	fmt.Printf("UPLOAD BYTE ARRAY: %d\n", []byte(testcases[i].Input))
 		
 	//	Upload Input File to Azure
-		inputPath := fmt.Sprintf("problems/%d/tc_%d/input.txt", problemID, i)
-		inputURL, err := storage.UploadFile(inputPath, []byte(testcases[i].Input))
-		if err != nil {
-			c.String(500, fmt.Sprintf("Azure upload failed for input %d", i))
-			return
-		}
+	//	inputPath := fmt.Sprintf("problems/%d/tc_%d/input.txt", problemID, i)
+		// inputURL, err := storage.UploadFile(inputPath, []byte(testcases[i].Input))
+		// if err != nil {
+		// 	c.String(500, fmt.Sprintf("Azure upload failed for input %d", i))
+		// 	return
+		// }
 
 	//	Upload Output File to Azure
-		outputPath := fmt.Sprintf("problems/%d/tc_%d/output.txt", problemID, i)
-		outputURL, err := storage.UploadFile(outputPath, []byte(solutions[i].Output))
-		if err != nil {
-			c.String(500, fmt.Sprintf("Azure upload failed for output %d", i))
-			return
-		}
+		// outputPath := fmt.Sprintf("problems/%d/tc_%d/output.txt", problemID, i)
+		// outputURL, err := storage.UploadFile(outputPath, []byte(solutions[i].Output))
+		// if err != nil {
+		// 	c.String(500, fmt.Sprintf("Azure upload failed for output %d", i))
+		// 	return
+		// }
 
 
 	//	fmt.Printf("hehe %s \n", outputURL);
 	//	fmt.Printf("hehe %s \n", inputURL);
 
 	//	Save both URLs to the database
-		_, err = db.Exec(`
-			INSERT INTO icpc_testcases (
-				problem_id,
-				testcase_input,
-				testcase_output
-			)
-			VALUES (?, ?, ?)
-		`,
-			problemID,
-			inputURL,
-			outputURL,
-		)
+	// 	_, err = db.Exec(`
+	// 		INSERT INTO icpc_testcases (
+	// 			problem_id,
+	// 			testcase_input,
+	// 			testcase_output
+	// 		)
+	// 		VALUES (?, ?, ?)
+	// 	`,
+	// 		problemID,
+	// 		inputURL,
+	// 		outputURL,
+	// 	)
 
-		if err != nil {
-			c.String(500, "DB testcase insert failed")
-			return
-		}
-	}
+	// 	if err != nil {
+	// 		c.String(500, "DB testcase insert failed")
+	// 		return
+	// 	}
+	// }
 
 	// --- 6. REDIRECT ON SUCCESS ---
-	c.Redirect(http.StatusSeeOther, "/maintainer/icpc_pyq")
-})
+ 	c.Redirect(http.StatusSeeOther, "/maintainer/icpc_pyq")
+ })
 	r.POST("/admin/users/delete", func(c *gin.Context) {
 		cookie, err := c.Cookie("admin_logged_in")
 		if err != nil || cookie != admin_password_hash {

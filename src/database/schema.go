@@ -97,13 +97,34 @@ if err != nil {
         rank INTEGER,
         points INTEGER,
         last_updated INTEGER,
-        FOREIGN KEY(user_id) REFERENCES users(id),
-        FOREIGN KEY(contest_id) REFERENCES contests(id),
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE ,
+        FOREIGN KEY(contest_id) REFERENCES contests(id) ON DELETE CASCADE,
         UNIQUE(user_id, contest_id)
     )`)
     if err != nil {
         log.Fatal("Failed to create user_contest_results table:", err)
     }
+
+
+// Create ICPC regional/prelims problem links
+_, err = DB.Exec(`CREATE TABLE IF NOT EXISTS problems (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    contest_name TEXT NOT NULL,
+    year INTEGER NOT NULL,
+
+    title TEXT NOT NULL,
+
+    link TEXT NOT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)`)
+if err != nil {
+    log.Fatal("Failed to create problems table:", err)
+}
+
+
+    
 
 
 

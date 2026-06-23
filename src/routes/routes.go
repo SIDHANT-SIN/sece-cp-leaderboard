@@ -79,11 +79,11 @@ func SetupRoutes() *gin.Engine {
 	r.GET("/health/ping", handles.SendPing)
 
 	//icpc routes
-	r.GET("/problems", handles.ShowProblems)
+	r.GET("/problems", handles.ShowProblemsNew)
 
-    r.GET("/problems/:id", handles.ShowProblem)
+  //  r.GET("/problems/:id", handles.ShowProblem)
 
-    r.GET("/problems/:id/solve", handles.ShowEditor)
+  //  r.GET("/problems/:id/solve", handles.ShowEditor)
 
 //	r.POST("/api/judge", handles.Judge)
 

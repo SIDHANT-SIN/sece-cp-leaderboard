@@ -3,149 +3,477 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>Problems</title>
 
 <style>
 
-body{
-    background:#181a20;
-    color:#eaeaea;
-    font-family:'Segoe UI','Roboto','Arial',sans-serif;
+  :root{
+    --bg:        #14161c;
+    --panel:     #1c1f27;
+    --panel-2:   #20232c;
+    --border:    #2a2e38;
+    --border-lt: #343946;
+    --text:      #eaeaea;
+    --text-dim:  #8a909c;
+    --cyan:      #00e1ff;
+    --cyan-dim:  rgba(0,225,255,0.12);
+    --amber:     #ffb300;
+    --green:     #3ddc97;
+    --red:       #ff5c6c;
+    --mono: 'JetBrains Mono', 'Roboto Mono', 'Consolas', monospace;
+    --sans: 'Segoe UI', 'Roboto', 'Inter', Arial, sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+
+  body{
+    background:var(--bg);
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(0,225,255,0.05), transparent 45%),
+      radial-gradient(circle at 85% 20%, rgba(255,179,0,0.04), transparent 40%);
+    color:var(--text);
+    font-family:var(--sans);
     margin:0;
     padding:0;
-}
+    min-height:100vh;
+  }
 
-.container{
-    max-width:1100px;
-    margin:40px auto;
-    background:#23272f;
-    border-radius:18px;
-    box-shadow:0 4px 32px #000a;
-    padding:32px;
-}
+  .container{
+    max-width:980px;
+    margin:0 auto;
+    padding:48px 24px 64px;
+  }
 
-h1{
+  /* ---------- Header & Breadcrumbs ---------- */
+
+  .page-head{
     text-align:center;
-    margin-top:10px;
-    font-size:2.5rem;
-    letter-spacing:2px;
-    color:#b347ff;
-}
+    margin-bottom:48px;
+  }
 
-.menu {
-    display: grid;
+  .page-head .eyebrow{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin: 0 0 10px;
+  }
 
-    grid-template-columns: repeat(3, 1fr);
+  .page-head .eyebrow a {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }
 
-    gap: 20px;
+  .page-head .eyebrow a:hover {
+    color: var(--cyan);
+  }
 
-    margin: 32px 0;
-}
+  .page-head .eyebrow .sep {
+    color: var(--border-lt);
+  }
 
-/* Tablet */
-@media (max-width: 1000px) {
+  .page-head .eyebrow .current {
+    color: var(--amber);
+    letter-spacing: 3px;
+  }
 
-    .menu {
-        grid-template-columns: repeat(2, 1fr);
-    }
+  h1{
+    font-size:2.1rem;
+    font-weight:700;
+    letter-spacing:0.5px;
+    margin:0;
+    color:var(--text);
+  }
 
-}
+  h1 .accent{ color:var(--cyan); }
 
-/* Mobile */
-@media (max-width: 600px) {
+  .page-head .sub{
+    margin:10px 0 0;
+    color:var(--text-dim);
+    font-size:14px;
+  }
 
-    .menu {
-        grid-template-columns: repeat(1, 1fr);
-    }
+  /* ---------- Error ---------- */
 
-}
-.problem-card{
+  .error-box{
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    background:rgba(255,92,108,0.08);
+    border:1px solid rgba(255,92,108,0.35);
+    color:var(--red);
+    border-radius:10px;
+    padding:16px 18px;
+    margin-bottom:32px;
+    font-size:14.5px;
+  }
+
+  .error-box .ico{
+    font-family:var(--mono);
+    font-weight:700;
+    border:1px solid var(--red);
+    border-radius:50%;
+    width:20px;height:20px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;
+    flex-shrink:0;
+    margin-top:1px;
+  }
+
+  /* ---------- Contest Card ---------- */
+
+  .contest-card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:14px;
+    margin-bottom:28px;
+    overflow:hidden;
+  }
+
+  .contest-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    padding:20px 24px;
+    border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg, rgba(255,255,255,0.015), transparent);
+  }
+
+  .contest-head-left{
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+
+  .contest-tag{
+    font-family:var(--mono);
+    font-size:11.5px;
+    font-weight:700;
+    letter-spacing:1.5px;
+    color:var(--amber);
+    background:rgba(255,179,0,0.1);
+    border:1px solid rgba(255,179,0,0.3);
+    border-radius:6px;
+    padding:5px 9px;
+    white-space:nowrap;
+  }
+
+  .contest-title{
+    font-size:1.2rem;
+    font-weight:600;
+    color:var(--text);
+    margin:0;
+  }
+
+  .contest-count{
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--text-dim);
+    white-space:nowrap;
+  }
+
+  /* ---------- Problem rows ---------- */
+
+  .problem-list{
     display:flex;
     flex-direction:column;
-    justify-content:center;
+    counter-reset:problem-counter;
+  }
+
+  .problem-row{
+    display:flex;
     align-items:center;
+    gap:16px;
+    padding:14px 24px;
+    border-bottom:1px solid var(--border);
+    transition:background 0.15s ease;
+    counter-increment:problem-counter;
+  }
 
-    padding:30px 20px;
-    background:#2a2e3a;
-    text-decoration:none;
+  .problem-row:last-child{
+    border-bottom:none;
+  }
 
-    border-radius:12px;
-    min-height:120px;
+  .problem-row:hover{
+    background:var(--panel-2);
+  }
 
-    transition:all .3s ease;
+  .problem-index{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--text-dim);
+    width:28px;
+    flex-shrink:0;
+    text-align:right;
+  }
 
-    position:relative;
+  .problem-index::before{
+    content: counter(problem-counter, decimal-leading-zero);
+  }
+
+  .problem-name{
+    flex:1 1 auto;
+    min-width:0;
+    color:var(--text);
+    font-weight:500;
+    font-size:15.5px;
     overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
 
-    color: #c44dff;          /* text color */
-    font-size:22px;       /* change this */
-    font-weight:600;      /* optional */
-}
+  .action-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    padding:8px 16px;
+    color:#0b0d11;
+    background:var(--cyan);
+    border:1px solid var(--cyan);
+    border-radius:7px;
+    font-size:13.5px;
+    font-weight:600;
+    text-decoration:none;
+    white-space:nowrap;
+    flex-shrink:0;
+    transition:background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
 
-.problem-card::before{
-    content:'';
-    position:absolute;
-    top:0;
-    left:0;
+  .action-btn:hover{
+    background:var(--cyan-dim);
+    color:var(--cyan);
+  }
 
-    width:100%;
-    height:5px;
+  .action-btn:active{
+    transform:scale(0.97);
+  }
 
-    background:linear-gradient(
-        90deg,
-        #9333ff,
-        #c44dff
-    );
-}
+  .action-btn svg{
+    width:13px;
+    height:13px;
+    flex-shrink:0;
+  }
 
-.problem-card:hover{
-    background:#32363f;
-    transform:translateY(-5px);
-    color:white;           /* text color on hover */
-}
-.problem-title{
-    color:#c44dff;
-    font-size:1.25rem;
-    font-weight:bold;
+  /* ---------- Empty state ---------- */
+
+  .empty-state{
     text-align:center;
-}
+    padding:60px 24px;
+    color:var(--text-dim);
+    border:1px dashed var(--border-lt);
+    border-radius:14px;
+  }
 
+  .empty-state .ico{
+    font-family:var(--mono);
+    font-size:28px;
+    color:var(--border-lt);
+    margin-bottom:12px;
+  }
 
+  /* ---------- Footer ---------- */
 
-.error{
-    color:red;
+  footer{
+    margin-top:48px;
     text-align:center;
-}
+    color:var(--text-dim);
+    font-size:13px;
+  }
+
+  footer a{
+    color:var(--cyan);
+    text-decoration:none;
+  }
+
+  footer a:hover{
+    text-decoration:underline;
+  }
+
+  /* ---------- Responsive ---------- */
+
+  @media (max-width:600px){
+    .container{ padding:32px 14px 48px; }
+    h1{ font-size:1.6rem; }
+    .contest-head{
+      flex-direction:column;
+      align-items:flex-start;
+      gap:10px;
+    }
+    .problem-row{
+      padding:12px 16px;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .problem-name{
+      font-size:14.5px;
+      white-space:normal;
+      flex-basis:100%;
+      order:1;
+    }
+    .problem-index{
+      order:0;
+    }
+    .action-btn{
+      padding:7px 12px;
+      font-size:12.5px;
+      order:2;
+      margin-left:auto;
+    }
+    .problem-index{
+      width:20px;
+    }
+  }
+
+  /* ---------- Reduced motion ---------- */
+
+  @media (prefers-reduced-motion: reduce){
+    .action-btn, .problem-row, .page-head .eyebrow a { transition:none; }
+  }
 
 </style>
 </head>
 
 <body>
-
 <div class="container">
 
-<h1>Problems</h1>
+  <div class="page-head">
+    <div class="eyebrow">
+      <a href="/leaderboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="m15 18-6-6 6-6"/></svg>
+       Go to Leaderboard
+      </a>
+      <span class="sep">/</span>
+      <span class="current">Practice Archive</span>
+    </div>
+    
+    <h1>ICPC <span class="accent">Previous Year Questions</span></h1>
+  </div>
 
-{{if .error}}
-<div class="error">
-    {{.error}}
+  {{if .error}}
+  <div class="error-box">
+    <span class="ico">!</span>
+    <span>{{.error}}</span>
+  </div>
+  {{end}}
+
+  {{if .Problems.Prelims}}
+  <div class="contest-card">
+    <div class="contest-head">
+      <div class="contest-head-left">
+        <span class="contest-tag">PRELIMS&nbsp;25</span>
+        <h2 class="contest-title">ICPC India Online Prelims</h2>
+      </div>
+      <span class="contest-count">{{len .Problems.Prelims}} problems</span>
+    </div>
+    <div class="problem-list">
+      {{range $p := .Problems.Prelims}}
+      <div class="problem-row">
+        <span class="problem-index"></span>
+        <span class="problem-name">{{$p.Title}}</span>
+        <a class="action-btn" href="{{$p.Link}}" target="_blank" rel="noopener">
+          View &amp; Submit
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+        </a>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{if .Problems.chn}}
+  <div class="contest-card">
+    <div class="contest-head">
+      <div class="contest-head-left">
+        <span class="contest-tag">CHN&nbsp;25</span>
+        <h2 class="contest-title">Chennai Regional</h2>
+      </div>
+      <span class="contest-count">{{len .Problems.chn}} problems</span>
+    </div>
+    <div class="problem-list">
+      {{range $p := .Problems.chn}}
+      <div class="problem-row">
+        <span class="problem-index"></span>
+        <span class="problem-name">{{$p.Title}}</span>
+        <a class="action-btn" href="{{$p.Link}}" target="_blank" rel="noopener">
+          View &amp; Submit
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+        </a>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{if .Problems.k}}
+  <div class="contest-card">
+    <div class="contest-head">
+      <div class="contest-head-left">
+        <span class="contest-tag">KAN&nbsp;25</span>
+        <h2 class="contest-title">Kanpur Regional</h2>
+      </div>
+      <span class="contest-count">{{len .Problems.k}} problems</span>
+    </div>
+    <div class="problem-list">
+      {{range $p := .Problems.k}}
+      <div class="problem-row">
+        <span class="problem-index"></span>
+        <span class="problem-name">{{$p.Title}}</span>
+        <a class="action-btn" href="{{$p.Link}}" target="_blank" rel="noopener">
+          View &amp; Submit
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+        </a>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{if .Problems.amr}}
+  <div class="contest-card">
+    <div class="contest-head">
+      <div class="contest-head-left">
+        <span class="contest-tag">AMR&nbsp;25</span>
+        <h2 class="contest-title">Amritapuri Regional</h2>
+      </div>
+      <span class="contest-count">{{len .Problems.amr}} problems</span>
+    </div>
+    <div class="problem-list">
+      {{range $p := .Problems.amr}}
+      <div class="problem-row">
+        <span class="problem-index"></span>
+        <span class="problem-name">{{$p.Title}}</span>
+        <a class="action-btn" href="{{$p.Link}}" target="_blank" rel="noopener">
+          View &amp; Submit
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+        </a>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{if and (not .Problems.Prelims) (not .Problems.chn) (not .Problems.k) (not .Problems.amr)}}
+  <div class="empty-state">
+    <div class="ico">[ ]</div>
+    <p>No problems available yet. Check back once a contest archive is added.</p>
+  </div>
+  {{end}}
+
+  <footer>
+    <p style="text-align:center; margin-top:12px; color:#888; font-size:14px;">
+      &copy; 2025 Developed by Sidhant & Ayush
+    </p>
+  </footer>
+
 </div>
-{{end}}
-
-<div class="menu">
-
-{{range .Problems}}
-
-<a href="/problems/{{.ID}}" class="problem-card">
-    {{.Title}}
-</a>
-
-{{end}}
-
-</div>
-
-</div>
-
 </body>
 </html>

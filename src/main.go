@@ -1,12 +1,12 @@
 package main
 
 import (
-	"log"
+//	"log"
 
 	"leaderboard/src/configs"
 	"leaderboard/src/database"
 	"leaderboard/src/routes"
-	"leaderboard/src/storage"
+//	"leaderboard/src/storage"
 )
 
 func main() {
@@ -18,16 +18,16 @@ func main() {
 
 	database.ConnectRedis(cfg)
 
-	err := storage.InitAzure(
-		cfg.AccountName,
-		cfg.AccountKey,
-		cfg.ContainerName,
-	)
-	if err != nil {
-		log.Fatal("Failed to initialize Azure Blob Storage:", err)
-	}
+	// err := storage.InitAzure(
+	// 	cfg.AccountName,
+	// 	cfg.AccountKey,
+	// 	cfg.ContainerName,
+	// )
+	// if err != nil {
+	// 	log.Println("Failed to initialize Azure Blob Storage:", err)
+	// }
 
-	log.Println("Successfully connected to Azure Blob Storage!")
+//	log.Println("Successfully connected to Azure Blob Storage!")
 
 	r := routes.SetupRoutes()
 

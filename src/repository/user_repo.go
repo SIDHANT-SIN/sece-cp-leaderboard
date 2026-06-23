@@ -29,14 +29,33 @@ func AddUser(handle string, displayName string) error {
 	return err
 }
 
+// func DeleteUser(id string) error {
+
+// 	_, err := database.DB.Exec(
+// 		`DELETE FROM users WHERE id = ?`,
+// 		id,
+// 	)
+
+// 	//_, err = db.Exec("DELETE FROM users WHERE id = ?", id)
+
+// 	return err
+// }
+
 func DeleteUser(id string) error {
 
 	_, err := database.DB.Exec(
-		`DELETE FROM users WHERE id = ?`,
+		`DELETE FROM user_contest_results WHERE user_id = ?`,
 		id,
 	)
 
-	//_, err = db.Exec("DELETE FROM users WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+
+	_, err = database.DB.Exec(
+		`DELETE FROM users WHERE id = ?`,
+		id,
+	)
 
 	return err
 }
