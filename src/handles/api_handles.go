@@ -8,11 +8,14 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"leaderboard/src/workers"
 
 	"time"
 
 	// "bytes"
 	// "os"
+
+	//"leaderboard/src/repository"
 
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
@@ -87,5 +90,20 @@ func SendPing(c *gin.Context) {
 }
 
 
+func Purg(c *gin.Context) {
+	clientToken := c.GetHeader("X-Cron-Token")
 
+		// Security Check: Verify the incoming token matches your env secret
+		if clientToken == "" || clientToken != cfg.CronSecret {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized access"})
+			return
+		}
 
+		// Execute the cleanup routine
+		workers.PurgeAsynqMetadata()
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "success",
+			"message": "Redis metadata purged and optimized successfully",
+		})
+}

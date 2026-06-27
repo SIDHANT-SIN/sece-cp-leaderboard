@@ -1,0 +1,630 @@
+{{ define "events.tmpl" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Past CP Events</title>
+
+<style>
+
+  :root{
+    --bg:        #14161c;
+    --panel:     #1c1f27;
+    --panel-2:   #20232c;
+    --border:    #2a2e38;
+    --border-lt: #343946;
+    --text:      #eaeaea;
+    --text-dim:  #8a909c;
+    --cyan:      #00e1ff;
+    --cyan-dim:  rgba(0,225,255,0.12);
+    --amber:     #ffb300;
+    --green:     #3ddc97;
+    --red:       #ff5c6c;
+    --mono: 'JetBrains Mono', 'Roboto Mono', 'Consolas', monospace;
+    --sans: 'Segoe UI', 'Roboto', 'Inter', Arial, sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+
+  body{
+    background:var(--bg);
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(0,225,255,0.05), transparent 45%),
+      radial-gradient(circle at 85% 20%, rgba(255,179,0,0.04), transparent 40%);
+    color:var(--text);
+    font-family:var(--sans);
+    margin:0;
+    padding:0;
+    min-height:100vh;
+  }
+
+  .container{
+    max-width:1200px;
+    margin:0 auto;
+    padding:48px 24px 64px;
+  }
+
+  /* ---------- Header & Breadcrumbs ---------- */
+
+  .page-head{
+    text-align:center;
+    margin-bottom:40px;
+  }
+
+  .page-head .eyebrow{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    margin:0 0 10px;
+  }
+
+  .page-head .eyebrow a{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    color:var(--text-dim);
+    text-decoration:none;
+    transition:color 0.15s ease;
+  }
+
+  .page-head .eyebrow a:hover{ color:var(--cyan); }
+  .page-head .eyebrow .sep{ color:var(--border-lt); }
+  .page-head .eyebrow .current{ color:var(--amber); letter-spacing:3px; }
+
+  h1{
+    font-size:2.1rem;
+    font-weight:700;
+    letter-spacing:0.5px;
+    margin:0;
+    color:var(--text);
+  }
+
+  h1 .accent{ color:var(--cyan); }
+
+  .page-head .sub{
+    margin:10px 0 0;
+    color:var(--text-dim);
+    font-size:14px;
+  }
+
+  /* ---------- Intro box ---------- */
+
+  .intro-box{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:22px 26px;
+    margin-bottom:48px;
+  }
+
+  .intro-box p{
+    margin:0;
+    font-size:14.5px;
+    line-height:1.75;
+    color:var(--text-dim);
+  }
+
+  /* ---------- Batch section ---------- */
+
+  .batch-section{
+    margin-bottom:56px;
+  }
+
+  .batch-head{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-bottom:24px;
+  }
+
+  .batch-tag{
+    font-family:var(--mono);
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:1.5px;
+    color:var(--amber);
+    background:rgba(255,179,0,0.1);
+    border:1px solid rgba(255,179,0,0.3);
+    border-radius:6px;
+    padding:6px 12px;
+    white-space:nowrap;
+  }
+
+  .batch-title{
+    font-size:1.3rem;
+    font-weight:600;
+    color:var(--text);
+    margin:0;
+  }
+
+  .batch-line{
+    flex:1 1 auto;
+    height:1px;
+    background:linear-gradient(90deg, var(--border), transparent);
+  }
+
+  /* ---------- Timeline entry ---------- */
+
+  .timeline-entry{
+    position:relative;
+    padding-left:28px;
+    margin-bottom:36px;
+  }
+
+  .timeline-entry::before{
+    content:"";
+    position:absolute;
+    left:5px;
+    top:6px;
+    bottom:-6px;
+    width:1px;
+    background:var(--border);
+  }
+
+  .timeline-entry:last-child::before{
+    display:none;
+  }
+
+  .timeline-entry::after{
+    content:"";
+    position:absolute;
+    left:0;
+    top:4px;
+    width:11px;
+    height:11px;
+    border-radius:50%;
+    background:var(--cyan);
+    box-shadow:0 0 0 3px var(--cyan-dim);
+  }
+
+  .timeline-label{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-family:var(--mono);
+    font-size:11.5px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:var(--cyan);
+    margin:0 0 14px;
+  }
+
+  /* ---------- Event card: slider + winners ---------- */
+
+  .event-card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:28px;
+    display:grid;
+    grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);
+    gap:32px;
+    align-items:center;
+    min-height:340px;
+  }
+
+  .slider{
+    position:relative;
+    width:100%;
+    border-radius:10px;
+    overflow:hidden;
+    background:var(--panel-2);
+  }
+
+  .slider-track{
+    display:flex;
+    width:100%;
+    height:100%;
+    transition:transform 0.45s ease;
+  }
+
+.slider-slide {
+    height: 100%;
+    width: 100%;
+    flex-shrink: 0;
+    /* Turn the slide into a flex container to handle alignment */
+    display: flex;
+    align-items: center;     /* Centers vertically */
+    justify-content: center; /* Centers horizontally */
+    overflow: hidden;
+  }
+
+  .slider-slide img {
+    /* max-width/max-height (not width/height:100%) lets the image shrink to
+       fit BOTH dimensions of the slide while keeping its own aspect ratio.
+       Flex align-items/justify-content on .slider-slide then centers
+       whatever space is left over, both vertically and horizontally. */
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    display: block;
+  }
+
+  .slider-tag{
+    position:absolute;
+    top:10px;
+    left:10px;
+    font-family:var(--mono);
+    font-size:10.5px;
+    font-weight:700;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--bg);
+    background:var(--cyan);
+    border-radius:5px;
+    padding:4px 8px;
+    z-index:2;
+  }
+
+  .slider-arrow{
+    position:absolute;
+    top:50%;
+    transform:translateY(-50%);
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    background:rgba(20,22,28,0.75);
+    border:1px solid var(--border-lt);
+    color:var(--cyan);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    transition:background 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+    z-index:2;
+  }
+
+  .slider-arrow:hover{
+    background:rgba(0,225,255,0.15);
+  }
+
+  .slider-arrow:active{
+    transform:translateY(-50%) scale(0.92);
+  }
+
+  .slider-arrow.prev{ left:10px; }
+  .slider-arrow.next{ right:10px; }
+
+  .slider-arrow[data-hidden="true"]{
+    opacity:0;
+    pointer-events:none;
+  }
+
+  .slider-arrow svg{
+    width:16px;
+    height:16px;
+  }
+
+  .slider-dots{
+    position:absolute;
+    bottom:10px;
+    left:0;
+    right:0;
+    display:flex;
+    justify-content:center;
+    gap:6px;
+    z-index:2;
+  }
+
+  .slider-dots span{
+    width:6px;
+    height:6px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.25);
+    transition:background 0.2s ease, width 0.2s ease;
+    flex-shrink:0;
+  }
+
+  .slider-dots span[data-active="true"]{
+    background:var(--cyan);
+    width:14px;
+    border-radius:3px;
+  }
+
+  /* ---------- Winners list ---------- */
+
+  .winners-block{
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    height:100%;
+  }
+
+  .winners-title{
+    font-family:var(--mono);
+    font-size:11.5px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--text-dim);
+    margin:0 0 16px;
+  }
+
+  .winners-list{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .winner-row{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:14px 16px;
+  }
+
+  .winner-badge{
+    width:38px;
+    height:38px;
+    border-radius:50%;
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .winner-badge svg{
+    width:19px;
+    height:19px;
+  }
+
+  .winner-badge.tier-gold{   color:#3a2a00; background:var(--amber); }
+  .winner-badge.tier-silver{ color:var(--bg); background:#c7ccd6; }
+  .winner-badge.tier-bronze{ color:#fff;      background:#9a6a3a; }
+  .winner-badge.tier-female{ color:#3a1230;   background:#e993c6; }
+  .winner-badge.tier-other{  color:var(--text-dim); background:var(--panel-2); border:1px solid var(--border-lt); }
+
+  .winner-text{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    min-width:0;
+  }
+
+  .winner-label{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--text-dim);
+  }
+
+  .winner-name{
+    font-size:16px;
+    font-weight:600;
+    color:var(--text);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  /* ---------- Empty state ---------- */
+
+  .empty-state{
+    text-align:center;
+    padding:60px 24px;
+    color:var(--text-dim);
+    border:1px dashed var(--border-lt);
+    border-radius:14px;
+  }
+
+  /* ---------- Footer ---------- */
+
+  footer{
+    margin-top:48px;
+    text-align:center;
+    color:var(--text-dim);
+    font-size:13px;
+  }
+
+  /* ---------- Responsive ---------- */
+
+  @media (max-width:700px){
+    .container{ padding:32px 14px 48px; }
+    h1{ font-size:1.6rem; }
+    .event-card{
+      grid-template-columns:1fr;
+      padding:18px;
+      gap:20px;
+      min-height:0;
+    }
+    /* Per-event aspect-ratio (inline style) is kept as-is on mobile too. */
+    .batch-title{ font-size:1.1rem; }
+  }
+
+  /* ---------- Reduced motion ---------- */
+
+  @media (prefers-reduced-motion: reduce){
+    .slider-track, .slider-arrow{ transition:none; }
+  }
+
+</style>
+</head>
+
+<body>
+<div class="container">
+
+  <div class="page-head">
+    <div class="eyebrow">
+      <a href="/leaderboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="m15 18-6-6 6-6"/></svg>
+        Go to Leaderboard
+      </a>
+      <span class="sep">/</span>
+      <span class="current">CP Events</span>
+    </div>
+
+    <h1>SECE <span class="accent">CP Events</span></h1>
+    <p class="sub">Celebrating contest victories, challenges & memories from every batch</p>
+  </div>
+
+ <div class="intro-box">
+  <p style="margin-bottom: 20px;">
+    <strong>If coding is your power, then what are you without it?</strong>
+  </p>
+
+  <p style="margin-bottom: 20px;">
+    Behind every contest is a story - hours of practice, tough problems, close calls in contests, and late-night debugging. SECE CP events bring together batches through coding contests and workshops.
+  </p>
+
+  <p>
+    Explore the highlights from past competitions, featuring contest winners, event moments, and memories captured from each batch.
+  </p>
+</div>
+
+  {{ range $batch := .Batches }}
+  <div class="batch-section">
+    <div class="batch-head">
+   
+      <h2 class="batch-title">Batch {{ $batch.Label }}</h2>
+      <div class="batch-line"></div>
+    </div>
+
+    {{ range $entry := $batch.Timelines }}
+    <div class="timeline-entry">
+      <div class="timeline-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        Timeline &mdash; {{ $entry.Date }}
+      </div>
+
+      <div class="event-card">
+        <div class="slider" style="aspect-ratio: {{ if $entry.AspectRatio }}{{ $entry.AspectRatio }}{{ else }}16/9{{ end }};">
+          <div class="slider-track">
+            {{ range $i, $slide := $entry.Slides }}
+            <div class="slider-slide">
+              <!-- CONDITIONAL LAZY LOADING APPLIED HERE -->
+              {{ if eq $i 0 }}
+              <img src="{{ $slide.URL }}" alt="{{ $slide.Caption }}" fetchpriority="high">
+              {{ else }}
+              <img src="{{ $slide.URL }}" alt="{{ $slide.Caption }}" loading="lazy">
+              {{ end }}
+            </div>
+            {{ end }}
+          </div>
+
+          {{ if $entry.Title }}<span class="slider-tag">{{ $entry.Title }}</span>{{ end }}
+
+          <button class="slider-arrow prev" type="button" aria-label="Previous photo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <button class="slider-arrow next" type="button" aria-label="Next photo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+
+          <div class="slider-dots">
+            {{ range $i, $slide := $entry.Slides }}
+            <span></span>
+            {{ end }}
+          </div>
+        </div>
+
+        <div class="winners-block">
+          <p class="winners-title">Winners</p>
+          <div class="winners-list">
+            {{ range $w := $entry.Winners }}
+            <div class="winner-row">
+              <span class="winner-badge tier-{{ $w.Tier }}">
+                {{ if eq $w.Tier "gold" }}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M9 13.5 7 22l5-3 5 3-2-8.5"/></svg>
+                {{ else if eq $w.Tier "silver" }}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M9 13.5 7 22l5-3 5 3-2-8.5"/></svg>
+                {{ else if eq $w.Tier "bronze" }}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M9 13.5 7 22l5-3 5 3-2-8.5"/></svg>
+                {{ else if eq $w.Tier "female" }}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5"/><path d="M12 14v7M9 18h6"/></svg>
+                {{ else }}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+                {{ end }}
+              </span>
+              <span class="winner-text">
+                <span class="winner-label">{{ $w.Label }}</span>
+                <span class="winner-name">{{ $w.Name }}</span>
+              </span>
+            </div>
+            {{ end }}
+          </div>
+        </div>
+      </div>
+    </div>
+    {{ end }}
+
+  </div>
+  {{ end }}
+
+  {{ if not .Batches }}
+  <div class="empty-state">
+    <p>No past events recorded yet. Check back once a batch archive is added.</p>
+  </div>
+  {{ end }}
+
+  <footer>
+    <p>&copy; 2025 Developed by Sidhant &amp; Ayush</p>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var sliders = document.querySelectorAll('.slider');
+
+  sliders.forEach(function(slider){
+    var track = slider.querySelector('.slider-track');
+    var slides = slider.querySelectorAll('.slider-slide');
+    var dots = slider.querySelectorAll('.slider-dots span');
+    var prevBtn = slider.querySelector('.slider-arrow.prev');
+    var nextBtn = slider.querySelector('.slider-arrow.next');
+    var count = slides.length;
+    var index = 0;
+
+    if (count === 0) return;
+
+    track.style.width = (count * 100) + '%';
+    slides.forEach(function(slide){
+      slide.style.width = (100 / count) + '%';
+    });
+
+    function render(){
+      track.style.transform = 'translateX(-' + (index * (100 / count)) + '%)';
+
+      dots.forEach(function(dot, i){
+        if (i === index) {
+          dot.setAttribute('data-active', 'true');
+        } else {
+          dot.removeAttribute('data-active');
+        }
+      });
+
+      prevBtn.setAttribute('data-hidden', index === 0 ? 'true' : 'false');
+      nextBtn.setAttribute('data-hidden', index === count - 1 ? 'true' : 'false');
+    }
+
+    nextBtn.addEventListener('click', function(){
+      if (index < count - 1) {
+        index++;
+        render();
+      }
+    });
+
+    prevBtn.addEventListener('click', function(){
+      if (index > 0) {
+        index--;
+        render();
+      }
+    });
+
+    render();
+  });
+})();
+</script>
+</body>
+</html>
+{{ end }}

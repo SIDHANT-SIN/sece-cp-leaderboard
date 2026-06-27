@@ -1,15 +1,15 @@
 package handles
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
+	
 	"net/http"
 	"strconv"
-	"strings"
-
+	
+    "time"
 	"leaderboard/src/repository"
-
+"leaderboard/src/workers"
+	"github.com/hibiken/asynq"
 	"github.com/gin-gonic/gin"
 )
 
@@ -97,7 +97,92 @@ func DeletePastUser(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/maintainer/users")
 }
 
-// RefreshRating pulls stats for all past users from Codeforces and updates local database ratings
+// // RefreshRating pulls stats for all past users from Codeforces and updates local database ratings
+// func RefreshRating(c *gin.Context) {
+// 	fmt.Println("STEP 0: endpoint hit")
+
+// 	cookie, err := c.Cookie("maintainer_logged_in")
+// 	if err != nil || cookie != "true" {
+// 		fmt.Println("STEP 1 FAILED: cookie issue:", err, cookie)
+// 		c.Redirect(http.StatusSeeOther, "/maintainer")
+// 		return
+// 	}
+// 	fmt.Println("STEP 1 OK: cookie validated")
+
+// 	handles, err := repository.GetPastUserHandles()
+// 	if err != nil {
+// 		fmt.Println("STEP 2 FAILED: DB query error:", err)
+// 		c.String(http.StatusInternalServerError, "DB error")
+// 		return
+// 	}
+
+// 	fmt.Println("STEP 2 OK: handles fetched =", len(handles), handles)
+
+// 	if len(handles) == 0 {
+// 		fmt.Println("STEP 2 EXIT: no users")
+// 		c.String(http.StatusOK, "No users to refresh")
+// 		return
+// 	}
+
+// 	handleStr := strings.Join(handles, ";")
+// 	url := "https://codeforces.com/api/user.info?handles=" + handleStr
+
+// 	fmt.Println("STEP 3: calling CF API:", url)
+
+// 	resp, err := http.Get(url)
+// 	if err != nil {
+// 		fmt.Println("STEP 3 FAILED: CF request error:", err)
+// 		c.String(http.StatusInternalServerError, "CF request failed")
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+
+// 	body, _ := io.ReadAll(resp.Body)
+// 	fmt.Println("STEP 3 RESPONSE STATUS:", resp.StatusCode)
+
+// 	if resp.StatusCode != 200 {
+// 		fmt.Println("STEP 3 FAILED: bad status")
+// 		c.String(http.StatusBadGateway, "CF API error: %s", string(body))
+// 		return
+// 	}
+
+// 	var apiResp struct {
+// 		Status string `json:"status"`
+// 		Result []struct {
+// 			Handle    string `json:"handle"`
+// 			Rating    int    `json:"rating"`
+// 			MaxRating int    `json:"maxRating"`
+// 			Rank      string `json:"rank"`
+// 		} `json:"result"`
+// 	}
+
+// 	err = json.Unmarshal(body, &apiResp)
+// 	if err != nil {
+// 		fmt.Println("STEP 4 FAILED: JSON unmarshal error:", err)
+// 		return
+// 	}
+
+// 	fmt.Println("STEP 4 OK: CF status =", apiResp.Status)
+// 	if apiResp.Status != "OK" {
+// 		fmt.Println("STEP 4 FAILED: CF API returned not OK")
+// 		return
+// 	}
+
+// 	for _, u := range apiResp.Result {
+// 		err := repository.UpdatePastUserRating(u.Rating, u.MaxRating, u.Rank, u.Handle)
+// 		if err != nil {
+// 			fmt.Println("DB UPDATE FAILED:", u.Handle, err)
+// 		} else {
+// 			fmt.Println("UPDATED:", u.Handle)
+// 		}
+// 	}
+
+// 	fmt.Println("STEP 5 DONE")
+// 	c.Redirect(http.StatusSeeOther, "/maintainer/users")
+// }
+
+
+// RefreshRating triggers a background task to pull stats for all past users from Codeforces
 func RefreshRating(c *gin.Context) {
 	fmt.Println("STEP 0: endpoint hit")
 
@@ -109,6 +194,14 @@ func RefreshRating(c *gin.Context) {
 	}
 	fmt.Println("STEP 1 OK: cookie validated")
 
+	// 1. Pre-Flight Check: Ensure no active task collision
+	statusData, err := repository.GetCurrentSyncStatus()
+	if err == nil && statusData["status"] == "processing" {
+		c.String(http.StatusConflict, "Another sync operation is currently running (JobID: %v). Please wait.", statusData["job_id"])
+		return
+	}
+
+	// 2. Fetch handles just to make sure we have targets to process
 	handles, err := repository.GetPastUserHandles()
 	if err != nil {
 		fmt.Println("STEP 2 FAILED: DB query error:", err)
@@ -116,67 +209,41 @@ func RefreshRating(c *gin.Context) {
 		return
 	}
 
-	fmt.Println("STEP 2 OK: handles fetched =", len(handles), handles)
-
 	if len(handles) == 0 {
 		fmt.Println("STEP 2 EXIT: no users")
 		c.String(http.StatusOK, "No users to refresh")
 		return
 	}
 
-	handleStr := strings.Join(handles, ";")
-	url := "https://codeforces.com/api/user.info?handles=" + handleStr
+	// 3. Generate a unique Job identity
+	jobID := fmt.Sprintf("rating_refresh_%d", time.Now().Unix())
 
-	fmt.Println("STEP 3: calling CF API:", url)
+	// 4. Initialize the SQLite Sync History log 
+	// Codeforces user.info handles multiple records in a single network request batch, so total expected operations = 1
+	_ = repository.CreateSyncLog(jobID, 1)
 
-	resp, err := http.Get(url)
+	// 5. Build the Asynq task payload using your workers package constructor
+	task, err := workers.NewCFRefreshRatingTask(jobID)
 	if err != nil {
-		fmt.Println("STEP 3 FAILED: CF request error:", err)
-		c.String(http.StatusInternalServerError, "CF request failed")
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	fmt.Println("STEP 3 RESPONSE STATUS:", resp.StatusCode)
-
-	if resp.StatusCode != 200 {
-		fmt.Println("STEP 3 FAILED: bad status")
-		c.String(http.StatusBadGateway, "CF API error: %s", string(body))
+		c.String(http.StatusInternalServerError, "Failed to build background task: %v", err)
 		return
 	}
 
-	var apiResp struct {
-		Status string `json:"status"`
-		Result []struct {
-			Handle    string `json:"handle"`
-			Rating    int    `json:"rating"`
-			MaxRating int    `json:"maxRating"`
-			Rank      string `json:"rank"`
-		} `json:"result"`
+	// 6. Fire: Fetch the client using your getter function
+	asynqClient := workers.GetClient()
+	if asynqClient == nil {
+		c.String(http.StatusInternalServerError, "Asynq client instance is not initialized in workers package")
+		return
 	}
 
-	err = json.Unmarshal(body, &apiResp)
+	// Enqueue into the standard default queue
+	_, err = asynqClient.Enqueue(task, asynq.Queue(workers.QueueDefault))
 	if err != nil {
-		fmt.Println("STEP 4 FAILED: JSON unmarshal error:", err)
+		c.String(http.StatusInternalServerError, "Failed to enqueue task: %v", err)
 		return
 	}
 
-	fmt.Println("STEP 4 OK: CF status =", apiResp.Status)
-	if apiResp.Status != "OK" {
-		fmt.Println("STEP 4 FAILED: CF API returned not OK")
-		return
-	}
-
-	for _, u := range apiResp.Result {
-		err := repository.UpdatePastUserRating(u.Rating, u.MaxRating, u.Rank, u.Handle)
-		if err != nil {
-			fmt.Println("DB UPDATE FAILED:", u.Handle, err)
-		} else {
-			fmt.Println("UPDATED:", u.Handle)
-		}
-	}
-
-	fmt.Println("STEP 5 DONE")
+	// 7. Forget: Redirect straight back to the maintainer panel
+	fmt.Println("STEP 5 DISPATCHED ASYNC SUCCESSFULLY")
 	c.Redirect(http.StatusSeeOther, "/maintainer/users")
 }

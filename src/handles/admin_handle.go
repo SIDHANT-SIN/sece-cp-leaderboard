@@ -1,14 +1,19 @@
 package handles
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"leaderboard/src/database"
 	"leaderboard/src/repository"
+	"leaderboard/src/workers"
+
+	"github.com/hibiken/asynq"
 
 	"github.com/gin-gonic/gin"
 )
@@ -47,7 +52,73 @@ func ShowContests(c *gin.Context) {
 	c.HTML(http.StatusOK, "admin_contests.tmpl", gin.H{"contests": contests})
 }
 
-// AddContest handles adding a single contest using Codeforces API
+// // AddContest handles adding a single contest using Codeforces API
+// func AddContest(c *gin.Context) {
+// 	cookie, err := c.Cookie("admin_logged_in")
+// 	if err != nil || cookie != cfg.AdminPasswordHash {
+// 		c.Redirect(http.StatusSeeOther, "/admin_login")
+// 		return
+// 	}
+
+// 	cfid := c.PostForm("cfid")
+
+// 	resp, err := http.Get("https://codeforces.com/api/contest.standings?contestId=" + cfid)
+// 	if err != nil {
+// 		fmt.Println("HTTP ERROR:", err)
+// 		c.String(http.StatusBadRequest, "Could not fetch contest info from Codeforces")
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+
+// 	fmt.Println("Contest ID:", cfid)
+// 	fmt.Println("Status Code:", resp.StatusCode)
+
+// 	if resp.StatusCode != 200 {
+// 		if resp.StatusCode >= 500 {
+// 			c.String(
+// 				http.StatusBadGateway,
+// 				"Codeforces API server is currently unavailable (HTTP %d). Try later after a few minutes or hours.",
+// 				resp.StatusCode,
+// 			)
+// 			return
+// 		}
+
+// 		c.String(
+// 			http.StatusBadRequest,
+// 			"Could not fetch contest info from Codeforces (HTTP %d)",
+// 			resp.StatusCode,
+// 		)
+// 		return
+// 	}
+
+// 	var apiResp struct {
+// 		Status string `json:"status"`
+// 		Result struct {
+// 			Contest struct {
+// 				Id        int    `json:"id"`
+// 				Name      string `json:"name"`
+// 				StartTime int64  `json:"startTimeSeconds"`
+// 			} `json:"contest"`
+// 		} `json:"result"`
+// 	}
+
+// 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil || apiResp.Status != "OK" {
+// 		c.String(http.StatusBadRequest, "Could not parse contest info from Codeforces")
+// 		return
+// 	}
+
+// 	err = repository.AddContest(apiResp.Result.Contest.Id, apiResp.Result.Contest.Name, apiResp.Result.Contest.StartTime)
+// 	if err != nil {
+// 		c.String(http.StatusBadRequest, "Could not add contest: %v", err)
+// 		return
+// 	}
+
+// 	rebuildLeaderboardCache()
+
+// 	c.Redirect(http.StatusSeeOther, "/admin/contests")
+// }
+
+// AddContest handles adding a single contest using Codeforces API asynchronously
 func AddContest(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
 	if err != nil || cookie != cfg.AdminPasswordHash {
@@ -56,62 +127,48 @@ func AddContest(c *gin.Context) {
 	}
 
 	cfid := c.PostForm("cfid")
+	if strings.TrimSpace(cfid) == "" {
+		c.String(http.StatusBadRequest, "Contest ID cannot be empty")
+		return
+	}
 
-	resp, err := http.Get("https://codeforces.com/api/contest.standings?contestId=" + cfid)
+	// 1. Pre-Flight Check: Ensure no active task collision
+	statusData, err := repository.GetCurrentSyncStatus()
+	if err == nil && statusData["status"] == "processing" {
+		c.String(http.StatusConflict, "Another sync operation is currently running (JobID: %v). Please wait.", statusData["job_id"])
+		return
+	}
+
+	// 2. Generate a unique Job identity
+	jobID := fmt.Sprintf("add_contest_%s_%d", cfid, time.Now().Unix())
+
+	// 3. Initialize the SQLite Sync History log (1 expected item)
+	_ = repository.CreateSyncLog(jobID, 1)
+
+	// 4. Build the Asynq task payload using your workers package constructor
+	task, err := workers.NewCFAddContestTask(jobID, cfid)
 	if err != nil {
-		fmt.Println("HTTP ERROR:", err)
-		c.String(http.StatusBadRequest, "Could not fetch contest info from Codeforces")
-		return
-	}
-	defer resp.Body.Close()
-
-	fmt.Println("Contest ID:", cfid)
-	fmt.Println("Status Code:", resp.StatusCode)
-
-	if resp.StatusCode != 200 {
-		if resp.StatusCode >= 500 {
-			c.String(
-				http.StatusBadGateway,
-				"Codeforces API server is currently unavailable (HTTP %d). Try later after a few minutes or hours.",
-				resp.StatusCode,
-			)
-			return
-		}
-
-		c.String(
-			http.StatusBadRequest,
-			"Could not fetch contest info from Codeforces (HTTP %d)",
-			resp.StatusCode,
-		)
+		c.String(http.StatusInternalServerError, "Failed to build background task: %v", err)
 		return
 	}
 
-	var apiResp struct {
-		Status string `json:"status"`
-		Result struct {
-			Contest struct {
-				Id        int    `json:"id"`
-				Name      string `json:"name"`
-				StartTime int64  `json:"startTimeSeconds"`
-			} `json:"contest"`
-		} `json:"result"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil || apiResp.Status != "OK" {
-		c.String(http.StatusBadRequest, "Could not parse contest info from Codeforces")
+	// 5. Fire: Fetch the client using your getter function 👈
+	asynqClient := workers.GetClient()
+	if asynqClient == nil {
+		c.String(http.StatusInternalServerError, "Asynq client instance is not initialized in workers package")
 		return
 	}
-
-	err = repository.AddContest(apiResp.Result.Contest.Id, apiResp.Result.Contest.Name, apiResp.Result.Contest.StartTime)
+	
+	_, err = asynqClient.Enqueue(task, asynq.Queue(workers.QueueCritical))
 	if err != nil {
-		c.String(http.StatusBadRequest, "Could not add contest: %v", err)
+		c.String(http.StatusInternalServerError, "Failed to enqueue task: %v", err)
 		return
 	}
 
-	rebuildLeaderboardCache()
-
+	// 6. Forget: Redirect straight back to the admin contests page
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
+
 
 // DeleteContest deletes a contest and its results
 func DeleteContest(c *gin.Context) {
@@ -167,22 +224,6 @@ func DeleteAllContests(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
 
-// FetchContests fetches all contests from a Codeforces group
-func FetchContests(c *gin.Context) {
-	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
-		c.Redirect(http.StatusSeeOther, "/admin_login")
-		return
-	}
-
-	err = fetchAndStoreContests()
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Failed to fetch contests: %v", err)
-		return
-	}
-
-	c.Redirect(http.StatusSeeOther, "/admin/contests")
-}
 
 // RefreshResults triggers recalculation of scores/ranks for all contests
 func RefreshResults(c *gin.Context) {
@@ -192,54 +233,27 @@ func RefreshResults(c *gin.Context) {
 		return
 	}
 
-	err = refreshAllUserContestResults()
+	limitStr := c.PostForm("limit")
+	limit := 0
+	if limitStr != "" {
+		limit, err = strconv.Atoi(limitStr)
+		if err != nil || limit <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid limit provided. Must be a positive integer."})
+			return
+		}
+	}
+
+	err = refreshAllUserContestResults(limit) // Passing limit down
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Failed to refresh results: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
 	rebuildLeaderboardCache()
-
-	c.Redirect(http.StatusSeeOther, "/leaderboard")
+	// Return a JSON 200 OK so the JS fetch() initiates polling smoothly
+	c.JSON(http.StatusOK, gin.H{"status": "started"})
 }
 
-// Helper to fetch from CF group API and store in DB
-func fetchAndStoreContests() error {
-	resp, err := http.Get("https://codeforces.com/api/contest.list?groupCode=wontreveal")
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Status string `json:"status"`
-		Result []struct {
-			Id        int    `json:"id"`
-			Name      string `json:"name"`
-			StartTime int64  `json:"startTimeSeconds"`
-			Phase     string `json:"phase"`
-			Type      string `json:"type"`
-		} `json:"result"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return err
-	}
-
-	if result.Status != "OK" {
-		return fmt.Errorf("codeforces status not OK")
-	}
-
-	for _, c := range result.Result {
-		if c.Phase == "FINISHED" && c.Type == "CF" {
-			err := repository.InsertContestIgnore(c.Id, c.Name, c.StartTime)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
 
 // Calculate points for a given rank
 func calculatePoints(rank, total int, div string) int {
@@ -262,175 +276,260 @@ func calculatePoints(rank, total int, div string) int {
 	return score
 }
 
-// Refresh all user standings and point calculations
-func refreshAllUserContestResults() error {
-	fmt.Println("\n================ REFRESH STARTED ================")
+// // Refresh all user standings and point calculations asynchronously via Asynq
+// func refreshAllUserContestResults() error {
+// 	fmt.Println("\n================ ASYNC REFRESH INITIALIZED ================")
 
-	userRows, err := repository.GetUsers()
-	if err != nil {
-		fmt.Println("ERROR loading users:", err)
-		return err
+// 	// 1. Pre-Flight Check: Ensure no active collision
+// 	statusData, err := repository.GetCurrentSyncStatus()
+// 	if err == nil && statusData["status"] == "processing" {
+// 		return fmt.Errorf("another sync job (%v) is currently active", statusData["job_id"])
+// 	}
+
+// 	// 2. Generate unique Job ID for tracking
+// 	jobID := fmt.Sprintf("batch_refresh_%d", time.Now().Unix())
+
+// 	// 3. Calculate total expected items from database for progress tracking
+// 	totalContests := 0
+// 	contestRows, err := repository.GetContestIDs()
+// 	if err == nil {
+// 		for contestRows.Next() {
+// 			totalContests++
+// 		}
+// 		contestRows.Close()
+// 	}
+// 	if totalContests == 0 {
+// 		totalContests = 1 // Prevent boundary errors if table is empty
+// 	}
+
+// 	// 4. Create the initial sync history tracking row in SQLite
+// 	_ = repository.CreateSyncLog(jobID, totalContests)
+
+// 	// 5. Build your background loop task payload
+// 	task, err := workers.NewCFBatchRefreshTask(jobID)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to construct batch task: %v", err)
+// 	}
+
+// 	// 6. Enqueue using your getter function 👈
+// 	asynqClient := workers.GetClient()
+// 	if asynqClient == nil {
+// 		return fmt.Errorf("asynq client is uninitialized in workers package")
+// 	}
+
+// 	_, err = asynqClient.Enqueue(task, asynq.Queue(workers.QueueCritical))
+// 	if err != nil {
+// 		return fmt.Errorf("failed to dispatch task to redis: %v", err)
+// 	}
+
+// 	fmt.Printf("[handles] Batch refresh task successfully pushed to queue. JobID: %s\n", jobID)
+// 	return nil
+// }
+
+
+func refreshAllUserContestResults(limit int) error {
+	fmt.Println("\n================ ASYNC REFRESH INITIALIZED ================")
+
+	statusData, err := repository.GetCurrentSyncStatus()
+	if err == nil && statusData["status"] == "processing" {
+		return fmt.Errorf("another sync job (%v) is currently active", statusData["job_id"])
 	}
-	defer userRows.Close()
 
-	var users []struct {
-		ID     int
-		Handle string
-	}
+	jobID := fmt.Sprintf("batch_refresh_%d", time.Now().Unix())
 
-	for userRows.Next() {
-		var id int
-		var handle, display string
-		if err := userRows.Scan(&id, &handle, &display); err != nil {
-			fmt.Println("User scan error:", err)
-			continue
+	totalContests := 0
+	contestRows, err := repository.GetContests() // Using GetContests to count ALL
+	if err == nil {
+		for contestRows.Next() {
+			totalContests++
 		}
-		users = append(users, struct {
-			ID     int
-			Handle string
-		}{
-			ID:     id,
-			Handle: handle,
-		})
+		contestRows.Close()
+	}
+	if totalContests == 0 {
+		totalContests = 1 
 	}
 
-	fmt.Println("Users loaded:", len(users))
-
-	contestRows, err := repository.GetContestIDs()
-	if err != nil {
-		fmt.Println("ERROR loading contests:", err)
-		return err
-	}
-	defer contestRows.Close()
-
-	var contests []struct {
-		ID   int
-		CFID int
-	}
-
-	for contestRows.Next() {
-		var id, cfid int
-		if err := contestRows.Scan(&id, &cfid); err != nil {
-			fmt.Println("Contest scan error:", err)
-			continue
+	// Boundary check against DB
+	if limit > 0 {
+		if limit > totalContests {
+			return fmt.Errorf("requested limit (%d) exceeds total contests (%d)", limit, totalContests)
 		}
-		contests = append(contests, struct {
-			ID   int
-			CFID int
-		}{
-			ID:   id,
-			CFID: cfid,
-		})
+		totalContests = limit // Adjust UI progress bar to the limit
 	}
 
-	fmt.Println("Contests loaded:", len(contests))
+	_ = repository.CreateSyncLog(jobID, totalContests)
 
-	for _, contest := range contests {
-		func() {
-			reqStartTime := time.Now()
-			defer func() {
-				elapsed := time.Since(reqStartTime)
-				if elapsed < 2*time.Second {
-					time.Sleep((2100 * time.Millisecond) - elapsed)
-				}
-			}()
-
-			fmt.Println("\n--------------------------------")
-			fmt.Println("Processing contest:", contest.CFID)
-
-			url := "https://codeforces.com/api/contest.ratingChanges?contestId=" + fmt.Sprint(contest.CFID)
-			fmt.Println("API URL:", url)
-
-			resp, err := http.Get(url)
-			if err != nil {
-				fmt.Println("HTTP ERROR:", err)
-				return
-			}
-
-			fmt.Println("HTTP Status:", resp.StatusCode)
-			if resp.StatusCode != http.StatusOK {
-				resp.Body.Close()
-				fmt.Println("Skipping contest because status != 200")
-				return
-			}
-
-			var ratingChanges struct {
-				Status string `json:"status"`
-				Result []struct {
-					ContestId               int    `json:"contestId"`
-					ContestName             string `json:"contestName"`
-					Handle                  string `json:"handle"`
-					Rank                    int    `json:"rank"`
-					RatingUpdateTimeSeconds int64  `json:"ratingUpdateTimeSeconds"`
-					OldRating               int    `json:"oldRating"`
-					NewRating               int    `json:"newRating"`
-				} `json:"result"`
-			}
-
-			err = json.NewDecoder(resp.Body).Decode(&ratingChanges)
-			resp.Body.Close()
-
-			if err != nil {
-				fmt.Println("JSON Decode Error:", err)
-				return
-			}
-
-			fmt.Println("CF Status:", ratingChanges.Status)
-			if ratingChanges.Status != "OK" {
-				fmt.Println("CF returned FAILED")
-				return
-			}
-
-			total := len(ratingChanges.Result)
-			fmt.Println("Rows Returned:", total)
-
-			if total == 0 {
-				fmt.Println("No standings rows returned")
-				return
-			}
-
-			contestName := ratingChanges.Result[0].ContestName
-			fmt.Println("Contest Name:", contestName)
-
-			// Detect division
-			div := "Div. 1"
-			if strings.Contains(contestName, "Div. 2") {
-				div = "Div. 2"
-			} else if strings.Contains(contestName, "Div. 3") {
-				div = "Div. 3"
-			} else if strings.Contains(contestName, "Div. 4") {
-				div = "Div. 4"
-			}
-
-			fmt.Println("Division:", div)
-
-			// Build handle -> rank map
-			rankMap := make(map[string]int)
-			for _, row := range ratingChanges.Result {
-				rankMap[row.Handle] = row.Rank
-			}
-
-			fmt.Println("RankMap Size:", len(rankMap))
-
-			matchCount := 0
-			for _, user := range users {
-				userRank := rankMap[user.Handle]
-				points := 0
-				if userRank > 0 {
-					points = calculatePoints(userRank, total, div)
-					matchCount++
-				}
-
-				err = repository.UpsertResult(user.ID, contest.ID, userRank, points)
-				if err != nil {
-					fmt.Printf("DB INSERT ERROR user=%s contest=%d err=%v\n", user.Handle, contest.CFID, err)
-				}
-			}
-
-			fmt.Println("Contest processed successfully. Matches found:", matchCount)
-		}()
+	// Temporarily embed the limit in Redis so the worker finds it seamlessly 
+	if limit > 0 {
+		database.RedisClient.Set(context.Background(), fmt.Sprintf("sync_limit:%s", jobID), limit, 30*time.Minute)
 	}
 
-	fmt.Printf("================ REFRESH ENDED ================\n")
+	task, err := workers.NewCFBatchRefreshTask(jobID)
+	if err != nil {
+		return fmt.Errorf("failed to construct batch task: %v", err)
+	}
+
+	asynqClient := workers.GetClient()
+	if asynqClient == nil {
+		return fmt.Errorf("asynq client is uninitialized in workers package")
+	}
+
+	_, err = asynqClient.Enqueue(task, asynq.Queue(workers.QueueCritical))
+	if err != nil {
+		return fmt.Errorf("failed to dispatch task to redis: %v", err)
+	}
+
+	fmt.Printf("[handles] Batch refresh task pushed to queue. JobID: %s, Limit: %d\n", jobID, limit)
 	return nil
+}
+
+
+// admin dashboard route handler
+func ShowAdminDashboard(c *gin.Context) {
+
+
+	cookie, err := c.Cookie("admin_logged_in")
+	if err != nil || cookie != cfg.AdminPasswordHash {
+		c.Redirect(http.StatusSeeOther, "/admin_login")
+		return
+	}
+
+	rows, err := repository.GetRecentSyncHistory(10)
+
+	history := []map[string]interface{}{}
+
+	if err == nil {
+		defer rows.Close()
+
+		for rows.Next() {
+			var (
+				jobID            string
+				status           string
+				successful       int
+				total            int
+				failedContestIDs string
+				startedAt        string
+				completedAt      string
+			)
+
+			err := rows.Scan(
+				&jobID,
+				&status,
+				&successful,
+				&total,
+				&failedContestIDs,
+				&startedAt,
+				&completedAt,
+			)
+
+			if err != nil {
+				continue
+			}
+
+			// 1. Calculate time difference in seconds for "started_at"
+			// Adjust the layout string ("2006-01-02 15:04:05") if your database stores timestamps differently
+			timeLayout := "2006-01-02 15:04:05" 
+			var durationSeconds int64 = 0
+
+			startT, errStart := time.Parse(timeLayout, startedAt)
+			endT, errEnd := time.Parse(timeLayout, completedAt)
+
+			if errStart == nil && errEnd == nil {
+				durationSeconds = int64(endT.Sub(startT).Seconds())
+			}
+
+			loc, errLoc := time.LoadLocation("Asia/Kolkata")
+        if errLoc == nil && errEnd == nil {  
+        completedAt = endT.In(loc).Format(timeLayout)
+               }
+
+			// 2. Handle failedContestIDs based on status
+			switch status {
+            case "cancelled":
+				failedContestIDs = "Idk you cancelled mid way"
+			case "completed":
+				failedContestIDs = "[None]"
+			}
+
+			// 3. Process job_id based on starting character
+			if len(jobID) > 0 {
+				firstChar := jobID[0]
+				switch firstChar {
+             case 'a':
+					// Safely remove the last 11 characters if length permits
+					if len(jobID) > 11 {
+						jobID = jobID[:len(jobID)-11]
+					} else {
+						jobID = ""
+					}
+					// Split by underscore and join with space
+					words := strings.Split(jobID, "_")
+					for i, word := range words {
+         if len(word) > 0 && word[0] >= 'a' && word[0] <= 'z' {
+            words[i] = strings.ToUpper(string(word[0])) + word[1:]
+        }
+    }
+					jobID = strings.Join(words, " ")
+				case 'c':
+					jobID = "Cron Handles Rating"
+					durationSeconds=16
+				
+			     case 'b':
+				jobID = "All User Results"
+				 case 'r':
+					jobID = "Handles Rating"
+			}
+			}
+
+			history = append(history, map[string]interface{}{
+				"job_id":               jobID,
+				"status":               status,
+				"successful_contests": successful,
+				"total_contests":      total,
+				"failed_contest_ids":  failedContestIDs,
+				"started_at":          durationSeconds, // Named exactly as requested, now holds seconds taken
+				"completed_at":        completedAt,
+			})
+		}
+	}
+
+	c.HTML(http.StatusOK, "admin.tmpl", gin.H{
+		"history": history,
+		"error":   nil,
+	})
+}
+// GetSyncStatus returns JSON progress data for the running background sync task
+func GetSyncStatus(c *gin.Context) {
+	cookie, err := c.Cookie("admin_logged_in")
+	if err != nil || cookie != cfg.AdminPasswordHash {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "unauthorized"})
+		return
+	}
+
+	// Fetch current progress metrics from the repository layer
+	statusData, err := repository.GetCurrentSyncStatus()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch sync status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, statusData)
+}
+
+// CancelSync sets a termination flag in Redis to gracefully halt the current sync loop
+func CancelSync(c *gin.Context) {
+	cookie, err := c.Cookie("admin_logged_in")
+	if err != nil || cookie != cfg.AdminPasswordHash {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "unauthorized"})
+		return
+	}
+
+	// Write cancellation trigger to Redis/DB state layer
+	err = repository.SetSyncCancelSignal()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set cancellation signal"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "cancel_signal_sent"})
 }

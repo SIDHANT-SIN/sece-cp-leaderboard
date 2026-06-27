@@ -6,12 +6,13 @@ import (
 	"sort"
      
 	"leaderboard/src/repository"
+	"leaderboard/src/configs"
       
 	"github.com/gin-gonic/gin"
 )
 
 // ShowLeaderboard renders the primary leaderboard with ranked active users
-func ShowLeaderboard(c *gin.Context) {
+func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 	// 1. Attempt to fetch leaderboard data from Upstash Redis Cache
 //	st := time.Now()
 
@@ -27,6 +28,7 @@ func ShowLeaderboard(c *gin.Context) {
 			"contests":   cachedContests,
 			"results":    cachedResults,
 			"userTotals": cachedUserTotals,
+			"logo": cfg.Logo,
 		})
 		return
 	}
@@ -144,6 +146,7 @@ func ShowLeaderboard(c *gin.Context) {
 		"contests":   contests,
 		"results":    results,
 		"userTotals": userTotals,
+		"logo" : cfg.Logo,
 	})
 }
 

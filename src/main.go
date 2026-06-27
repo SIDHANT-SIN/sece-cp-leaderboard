@@ -1,12 +1,13 @@
 package main
 
 import (
-//	"log"
+	"log"
 
 	"leaderboard/src/configs"
 	"leaderboard/src/database"
 	"leaderboard/src/routes"
-//	"leaderboard/src/storage"
+	"leaderboard/src/workers"
+	//"leaderboard/src/handles"
 )
 
 func main() {
@@ -18,18 +19,24 @@ func main() {
 
 	database.ConnectRedis(cfg)
 
-	// err := storage.InitAzure(
-	// 	cfg.AccountName,
-	// 	cfg.AccountKey,
-	// 	cfg.ContainerName,
-	// )
-	// if err != nil {
-	// 	log.Println("Failed to initialize Azure Blob Storage:", err)
-	// }
+	// Initialize Asynq worker client, server, and scheduler
+	if cfg.RedisURL != "" {
+		redisOpt, err := workers.ParseRedisOpt(cfg.RedisURL)
+		if err != nil {
+			log.Fatalf("Failed to parse Redis URL for Asynq: %v", err)
+		}
 
-//	log.Println("Successfully connected to Azure Blob Storage!")
+		// This runs synchronously before the background routines spin up.
+		workers.PurgeAsynqMetadata()
 
-	r := routes.SetupRoutes()
+		workers.InitClient(redisOpt)
+		go workers.StartServer(redisOpt)
+		go workers.StartScheduler(redisOpt)
+	} else {
+		log.Println("WARNING: REDIS_URL not set. Asynq worker server not started.")
+	}
+
+	r := routes.SetupRoutes(cfg)
 
 	port := cfg.Port
 

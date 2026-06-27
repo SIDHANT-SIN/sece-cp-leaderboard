@@ -52,14 +52,14 @@ func AddUser(c *gin.Context) {
 	handle := c.PostForm("handle")
 	displayName := c.PostForm("display_name")
 
-	resp, err := http.Get("https://codeforces.com/api/user.info?handles=" + handle)
-	if err != nil || resp.StatusCode != 200 {
-		c.HTML(http.StatusBadRequest, "admin.tmpl", gin.H{
-			"Users": repository.GetUsersList(),
-			"error": "Invalid Codeforces handle",
-		})
-		return
-	}
+	// resp, err := http.Get("https://codeforces.com/api/user.info?handles=" + handle)
+	// if err != nil || resp.StatusCode != 200 {
+	// 	c.HTML(http.StatusBadRequest, "admin.tmpl", gin.H{
+	// 		"Users": repository.GetUsersList(),
+	// 		"error": "Invalid Codeforces handle",
+	// 	})
+	// 	return
+	// }
 
 	err = repository.AddUser(handle, displayName)
 	if err != nil {

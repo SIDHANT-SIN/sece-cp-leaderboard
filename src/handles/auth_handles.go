@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"leaderboard/src/configs"
+	"leaderboard/src/repository"
 
 	"github.com/gin-gonic/gin"
 )
@@ -51,18 +52,75 @@ func AdminLogin(c *gin.Context) {
 	)
 }
 
+// func AdminPage(c *gin.Context) {
+
+// 	cookie, err := c.Cookie("admin_logged_in")
+
+// 	if err != nil || cookie != cfg.AdminPasswordHash {
+// 		c.Redirect(http.StatusSeeOther, "/admin_login")
+// 		return
+// 	}
+
+// 	c.HTML(http.StatusOK, "admin.tmpl", nil)
+// }
 func AdminPage(c *gin.Context) {
-
+	// 1. Auth Guard: Verify the admin session cookie
 	cookie, err := c.Cookie("admin_logged_in")
-
 	if err != nil || cookie != cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
 
-	c.HTML(http.StatusOK, "admin.tmpl", nil)
-}
+	// 2. Fetch the latest 10 sync runs from Turso
+	rows, err := repository.GetRecentSyncHistory(10)
+	history := []map[string]interface{}{}
 
+	if err == nil {
+		defer rows.Close()
+
+		for rows.Next() {
+			var (
+				jobID            string
+				status           string
+				successful       int
+				total            int
+				failedContestIDs  string
+				startedAt        string
+				completedAt       string
+			)
+
+			err := rows.Scan(
+				&jobID,
+				&status,
+				&successful,
+				&total,
+				&failedContestIDs,
+				&startedAt,
+				&completedAt,
+			)
+			if err != nil {
+				// Skips row if scanning fails
+				continue 
+			}
+
+			history = append(history, map[string]interface{}{
+				"job_id":              jobID,
+				"status":              status,
+				"successful_contests": successful,
+				"total_contests":      total,
+				"failed_contest_ids":  failedContestIDs,
+				"started_at":          startedAt,
+				"completed_at":        completedAt,
+			})
+		}
+	}
+
+	// 3. Inject the real data into the template instead of 'nil'
+	c.HTML(http.StatusOK, "admin.tmpl", gin.H{
+		"history": history,
+		"error":   nil,
+	})
+}
 func AdminLogout(c *gin.Context) {
 
 	c.SetCookie(

@@ -27,6 +27,23 @@ func CreateTables() {
 if err != nil {
     log.Fatal("Failed to create past_users table:", err)
 }
+
+// Create sync_history table: stores Codeforces sync job status
+_, err = DB.Exec(`CREATE TABLE IF NOT EXISTS sync_history (
+    job_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    successful_contests INTEGER DEFAULT 0,
+    total_contests INTEGER DEFAULT 0,
+    failed_contest_ids TEXT DEFAULT '',
+    started_at TEXT NOT NULL,
+    completed_at TEXT
+)`)
+if err != nil {
+    log.Fatal("Failed to create sync_history table:", err)
+}
+
+
+
     // Create contests table: stores relevant Codeforces contests
     _, err = DB.Exec(`CREATE TABLE IF NOT EXISTS contests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,10 +136,9 @@ _, err = DB.Exec(`CREATE TABLE IF NOT EXISTS problems (
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`)
-if err != nil {
-    log.Fatal("Failed to create problems table:", err)
-}
-
+	if err != nil {
+		log.Fatal("Failed to create problems table:", err)
+	}
 
     
 

@@ -17,11 +17,15 @@ type Config struct {
 	MaintainerPassword string
 
 	Port string
+	Logo string
 
 	DBUrl     string
 	AuthToken string
 
 	RedisURL string
+	CronSecret string
+	SupaBase string
+	FolderName string
 }
 
 func LoadConfig() *Config {
@@ -40,10 +44,15 @@ func LoadConfig() *Config {
 		MaintainerPassword: os.Getenv("MAINTAINER_PASSWORD"),
 
 		Port: os.Getenv("PORT"),
+		Logo : os.Getenv("LOGO_URL"),
 
 		DBUrl:     os.Getenv("TURSO_DATABASE_URL"),
 		AuthToken: os.Getenv("TURSO_AUTH_TOKEN"),
 
 		RedisURL: os.Getenv("REDIS_URL"),
+		CronSecret: os.Getenv("CRON_SECRET"),
+
+		SupaBase : os.Getenv("SUPABASE_URL"),
+		FolderName: os.Getenv("FOLDER"),
 	}
 }

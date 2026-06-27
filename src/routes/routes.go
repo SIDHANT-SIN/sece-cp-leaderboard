@@ -4,15 +4,22 @@ import (
 	"net/http"
 
 	"leaderboard/src/handles"
+	"leaderboard/src/configs"
 
 	"github.com/gin-gonic/gin"
+
+
 )
 
-func SetupRoutes() *gin.Engine {
+func SetupRoutes(cfg *configs.Config) *gin.Engine {
 
 	r := gin.Default()
 
+
+
 	r.LoadHTMLGlob("templates/*")
+
+	//r.Static("/static", "../static")
 
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/leaderboard")
@@ -22,7 +29,7 @@ func SetupRoutes() *gin.Engine {
 		c.Redirect(http.StatusSeeOther, "/leaderboard")
 	})
 
-	r.GET("/admin", handles.AdminPage)
+	r.GET("/admin", handles.ShowAdminDashboard)
 
 	r.GET("/admin_login", handles.AdminLoginPage)
 
@@ -63,29 +70,38 @@ func SetupRoutes() *gin.Engine {
 
 	r.POST("/admin/contests/delete_all", handles.DeleteAllContests)
 
-	r.POST("/admin/contests/fetch", handles.FetchContests)
+	//r.POST("/admin/contests/fetch", handles.FetchContests)
 
 	r.POST("/admin/refresh_results", handles.RefreshResults)
+	
+	r.GET("/admin/sync_status", handles.GetSyncStatus)
+	r.POST("/admin/cancel_sync", handles.CancelSync)
 
 	// Leaderboard routes
-	r.GET("/leaderboard", handles.ShowLeaderboard)
+	r.GET("/leaderboard", func(c *gin.Context) {
+    handles.ShowLeaderboard(c, cfg)
+         })
+
+	
+	r.GET("/past_events",func(c *gin.Context) {
+    handles.PastEvents(c, cfg)
+         })
 
 	r.GET("/past_leaderboard", handles.ShowPastLeaderboard)
 
 	// Refresh rating route
 	r.POST("/maintainer/refresh_rating", handles.RefreshRating)
 
-	//health checks
-	r.GET("/health/ping", handles.SendPing)
+	//health checks and cron jobs
+	r.GET("api/health/ping", handles.SendPing)
+
+	r.POST("/api/maintenance/purge", handles.Purg)
+
 
 	//icpc routes
 	r.GET("/problems", handles.ShowProblemsNew)
 
-  //  r.GET("/problems/:id", handles.ShowProblem)
-
-  //  r.GET("/problems/:id/solve", handles.ShowEditor)
-
-//	r.POST("/api/judge", handles.Judge)
+ 
 
 	return r
 }

@@ -21,7 +21,6 @@
         }
         h1 {
             text-align: center;
-            margin-top: 32px;
             font-size: 2.5rem;
             letter-spacing: 2px;
             color: #00e1ff;
@@ -119,6 +118,45 @@
     color: #00e1ff;
     text-shadow: 0 2px 16px #00e1ff33;
 }
+
+/* ---- Past events gallery pill (Option B) ---- */
+.events-pill-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 18px;
+    /* 👉 SHIFT IT HERE:
+       0px = centered (default)
+       positive value (e.g. 80px)  = shifts pill RIGHT
+       negative value (e.g. -80px) = shifts pill LEFT
+       this works because justify-content:center centers it first,
+       then margin-left nudges it off-center */
+    margin-left: -34px;
+}
+.events-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,179,0,0.08);
+    border: 1px solid rgba(255,179,0,0.3);
+    color: #ffb300;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    padding: 8px 19px;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+.events-pill:hover {
+    background: rgba(255,179,0,0.15);
+    border-color: rgba(255,179,0,0.5);
+}
+.events-pill svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
         .scroll-x {
             overflow-x: auto;
             padding-bottom: 8px;
@@ -181,18 +219,40 @@
     color: #3a3f48;
     font-size: 13px;
 }
+        .brand-header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            margin-top: 32px;
+        }
+        .club-logo {
+            display: block;
+            margin-top: 20px;
+        }
+        .brand-header h1 {
+            margin: 0;
+        }
         @media (max-width: 700px) {
+            .brand-header { gap: 10px; }
+            .club-logo { width: 50px; }
             th, td { padding: 8px 6px; font-size: 0.95rem; }
             h1 { font-size: 1.5rem; }
             th.rank-col, td.rank-col { width: 48px; min-width: 48px; max-width: 48px; }
             th.user-col, td.user-col { width: 120px; min-width: 120px; max-width: 120px; }
             th.points-col, td.points-col { width: 80px; min-width: 80px; max-width: 80px; }
             .eyebrow { font-size: 11px; gap: 7px; }
+             .events-pill-wrap {
+        margin-left: 4px;   /* centered on phone, regardless of desktop value */
+    }
         }
     </style>
 </head>
 <body>
-    <h1>SECE CP LEADERBOARD</h1>
+    <div class="brand-header">
+        <img src="{{.logo}}" width="120" class="club-logo" alt="SECE logo">
+        <h1>SECE CP LEADERBOARD</h1>
+    </div>
     <h2 style="text-align:center;color:#00e1ff;">Phase I: 2025–2029</h2>
     <div class="page-head">
       <div class="eyebrow">
@@ -206,6 +266,12 @@
         <a href="/past_leaderboard">
        <div style ="font-size: 15px;">   Past Batch Ratings</div>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+      </div>
+      <div class="events-pill-wrap">
+        <a href="/past_events" class="events-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          SECE CP Events
         </a>
       </div>
     </div>
