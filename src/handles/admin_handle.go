@@ -249,7 +249,9 @@ func RefreshResults(c *gin.Context) {
 		return
 	}
 
-	rebuildLeaderboardCache()
+	// Cache rebuild intentionally NOT called here — the job was just enqueued
+	// and hasn't written anything yet. GetSyncStatus rebuilds the cache once
+	// it observes the job has actually finished (see below).
 	// Return a JSON 200 OK so the JS fetch() initiates polling smoothly
 	c.JSON(http.StatusOK, gin.H{"status": "started"})
 }
@@ -511,6 +513,27 @@ func GetSyncStatus(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch sync status"})
 		return
+	}
+
+	// GetCurrentSyncStatus only ever reports "processing" or "idle" (the
+	// worker deletes its Redis keys as soon as it finishes, before any poll
+	// can observe "completed"/"cancelled" there, and the matching SQL row
+	// has already flipped status away from 'processing' too). admin.tmpl's
+	// JS reloads the page on exactly this processing -> idle transition, so
+	// catching that same transition here lets us rebuild the cache right
+	// before the response that triggers the reload — guaranteeing the
+	// reload sees fresh data instead of whatever was cached before refresh.
+	status, _ := statusData["status"].(string)
+	ctx := context.Background()
+
+	if status == "processing" {
+		database.RedisClient.Set(ctx, "sync:was_processing", "1", 30*time.Minute)
+	} else {
+		wasProcessing, _ := database.RedisClient.Get(ctx, "sync:was_processing").Result()
+		if wasProcessing == "1" {
+			database.RedisClient.Del(ctx, "sync:was_processing")
+			rebuildLeaderboardCache()
+		}
 	}
 
 	c.JSON(http.StatusOK, statusData)

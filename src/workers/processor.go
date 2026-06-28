@@ -477,7 +477,7 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
 			ReleaseActiveJobLock(p.JobID)
 		}
-		return fmt.Errorf(msg)
+		return fmt.Errorf("error %v",msg)
 	}
 
 	var apiResp struct {
@@ -506,7 +506,7 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
 			ReleaseActiveJobLock(p.JobID)
 		}
-		return fmt.Errorf(msg)
+		return fmt.Errorf("error %v",msg)
 	}
 
 	for _, u := range apiResp.Result {
@@ -649,7 +649,7 @@ func HandleCFAddContest(ctx context.Context, t *asynq.Task) error {
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
 			ReleaseActiveJobLock(p.JobID)
 		}
-		return fmt.Errorf(msg)
+		return fmt.Errorf("error %v",msg)
 	}
 
 	var apiResp struct {
