@@ -19,8 +19,6 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 
 	r.LoadHTMLGlob("templates/*")
 
-	//r.Static("/static", "../static")
-
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/leaderboard")
 	})
@@ -93,7 +91,7 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 	r.POST("/maintainer/refresh_rating", handles.RefreshRating)
 
 	//health checks and cron jobs
-	r.GET("api/health/ping", handles.SendPing)
+	r.GET("/api/health/ping", handles.SendPing)
 
 	r.POST("/api/maintenance/purge", handles.Purg)
 
