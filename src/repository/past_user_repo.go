@@ -13,9 +13,6 @@ func GetPastUsers() (*sql.Rows, error) {
 		SELECT id, codeforces_handle, display_name, batch_year, current_rating, max_rating, title
         FROM past_users
 	`)
-	//rows, err := db.Query(`
-        
-    // `)
 }
 
 func AddPastUser(handle string, display string, batch int) error {
@@ -37,8 +34,6 @@ func DeletePastUser(id string) error {
 		id,
 	)
 
-	//_, err = db.Exec("DELETE FROM past_users WHERE id = ?", id)
-
 	return err
 }
 
@@ -49,4 +44,4 @@ func GetPastUsersByBatch(batch string) (*sql.Rows, error) {
 		FROM past_users
 		WHERE batch_year = ?
 	`, batch)
-}
+}

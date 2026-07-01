@@ -11,10 +11,9 @@ import (
 
 var RedisClient *redis.Client
 
-// ConnectRedis initializes the connection to the Upstash Redis database
 func ConnectRedis(cfg *configs.Config) {
 	if cfg.RedisURL == "" {
-		log.Println("WARNING: REDIS_URL is not set, caching will be disabled.")
+		log.Println("WARNING: REDIS_URL is not set.")
 		return
 	}
 
@@ -25,7 +24,6 @@ func ConnectRedis(cfg *configs.Config) {
 
 	client := redis.NewClient(opt)
 
-	// Ping the server to test connectivity
 	ctx := context.Background()
 	_, err = client.Ping(ctx).Result()
 	if err != nil {

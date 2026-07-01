@@ -18,7 +18,6 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// cfRateLimit is the minimum time each task must take (2.1s for safety over CF's 2s limit)
 const cfRateLimit = 2100 * time.Millisecond
 const cfRateLimit2 = 10* time.Millisecond
 
@@ -27,8 +26,6 @@ type userEntry struct {
 	Handle string
 }
 
-// waitForCFRateLimit sleeps the remaining time to ensure 2.1s total from start.
-// Measured from before the API call to after data is received + processed.
 func waitForCFRateLimit(start time.Time) {
 	elapsed := time.Since(start)
 	if elapsed < cfRateLimit {
@@ -55,7 +52,7 @@ func updateJobError(jobID, msg string) {
 	}
 }
 
-// processSingleContestStandings is a shared helper to call CF API and store results
+// shared helper to call CF API and store results
 func processSingleContestStandings(cfContestID, contestDBID int, users []userEntry) error {
 	url := "https://codeforces.com/api/contest.ratingChanges?contestId=" + fmt.Sprint(cfContestID)
 	resp, err := http.Get(url)
@@ -113,7 +110,7 @@ func processSingleContestStandings(cfContestID, contestDBID int, users []userEnt
 	return nil
 }
 
-// HandleCFRatingChanges processes rating changes for a single contest.
+//  processes rating changes for a single contest.
 func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 	start := time.Now()
 	defer waitForCFRateLimit2(start)
@@ -133,7 +130,6 @@ func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 			SetJobState(p.JobID, state, 10*time.Minute)
 		}
 
-		// 👉 ADDED: Initialize global tracking keys for polling
 		database.RedisClient.Set(ctx, "sync:job_id", p.JobID, 30*time.Minute)
 		database.RedisClient.Set(ctx, "sync:status", "processing", 30*time.Minute)
 		database.RedisClient.Set(ctx, "sync:total", 1, 30*time.Minute)
@@ -146,7 +142,6 @@ func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 			updateJobError(p.JobID, "failed to load users: "+err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
 			
-			// 👉 ADDED: Clean up global tracking keys on error
 			database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
 			
 			ReleaseActiveJobLock(p.JobID)
@@ -169,8 +164,7 @@ func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 		if p.JobID != "" {
 			updateJobError(p.JobID, err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			
-			// 👉 ADDED: Clean up global tracking keys on execution failure
+		
 			database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
 			
 			ReleaseActiveJobLock(p.JobID)
@@ -187,8 +181,7 @@ func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 			SetJobState(p.JobID, state, 10*time.Minute)
 		}
 		_ = repository.UpdateSyncLog(p.JobID, "completed", 1, "[]")
-		
-		// 👉 ADDED: Clean up global tracking keys on success completion
+	
 		database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
 		
 		ReleaseActiveJobLock(p.JobID)
@@ -197,7 +190,7 @@ func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 	return nil
 }
 
-// HandleCFBatchRefresh processes rating changes for all contests sequentially.
+//  processes rating changes for all contests sequentially.
 func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 	var p CFBatchRefreshPayload
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
@@ -222,33 +215,7 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 			users = append(users, userEntry{ID: id, Handle: handle})
 		}
 	}
-//    //teststart
-// 	contestRows, err := repository.GetContestIDs()
-// 	if err != nil {
-// 		updateJobError(p.JobID, "failed to load contests: "+err.Error())
-// 		ReleaseActiveJobLock(p.JobID)
-// 		return err
-// 	}
-// 	defer contestRows.Close()
 
-// 	type contestEntry struct {
-// 		ID   int
-// 		CFID int
-// 	}
-// 	var contests []contestEntry
-// 	for contestRows.Next() {
-// 		var id, cfid int
-// 		if err := contestRows.Scan(&id, &cfid); err == nil {
-// 			contests = append(contests, contestEntry{ID: id, CFID: cfid})
-// 		}
-// 	}
-
-// 	total := len(contests)
-// 	successful := 0
-//    //testclose
-
-
-// Switch to GetContests() to guarantee they are ordered by start_time DESC
 	contestRows, err := repository.GetContests()
 	if err != nil {
 		updateJobError(p.JobID, "failed to load contests: "+err.Error())
@@ -266,20 +233,19 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 		var id, cfid int
 		var name string
 		var startTime int64
-		// GetContests yields 4 columns, so scan all 4 to avoid errors
+
 		if err := contestRows.Scan(&id, &cfid, &name, &startTime); err == nil {
 			contests = append(contests, contestEntry{ID: id, CFID: cfid})
 		}
 	}
 
-	// NEW: Tap into Redis to slice the array if a limit was requested
 	limitStr, err := database.RedisClient.Get(ctx, fmt.Sprintf("sync_limit:%s", p.JobID)).Result()
 	if err == nil && limitStr != "" {
 		limit, _ := strconv.Atoi(limitStr)
 		if limit > 0 && limit <= len(contests) {
-			contests = contests[:limit] // Slice array to only keep the 'X' newest
+			contests = contests[:limit] 
 		}
-		// Wipe the key to keep Redis tidy
+	
 		database.RedisClient.Del(ctx, fmt.Sprintf("sync_limit:%s", p.JobID))
 	}
 
@@ -320,16 +286,15 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 			
 			database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
 			ReleaseActiveJobLock(p.JobID)
-            
-			// 🚀 FIX: Wrap with asynq.SkipRetry to block resurrection attempts
+      
 			return fmt.Errorf("task cancelled via context: %w", asynq.SkipRetry)
 			
 		default:
-			// 🚀 CHECKPOINT: Actively check for manual cancellation signal from HTTP route
+			
 			cancelSignal, _ := database.RedisClient.Get(ctx, "sync:cancel_signal").Result()
 			if cancelSignal == "1" {
 				fmt.Printf("[worker] Batch refresh JobID %s manually aborted via Redis signal\n", p.JobID)
-				database.RedisClient.Del(ctx, "sync:cancel_signal") // Clear the signal key
+				database.RedisClient.Del(ctx, "sync:cancel_signal") 
 
 				if state, errState := GetJobState(p.JobID); errState == nil && state != nil {
 					state.Status = "cancelled"
@@ -348,8 +313,7 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 
 				database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
 				ReleaseActiveJobLock(p.JobID)
-                
-				// 🚀 FIX: Return asynq.SkipRetry here too so it terminates cleanly and permanently
+           
 				return fmt.Errorf("batch sync cancelled by admin request: %w", asynq.SkipRetry)
 			}
 		}
@@ -401,7 +365,7 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 	return nil
 }
 
-// HandleCFRefreshRating fetches user.info for all past users and updates ratings in DB.
+//  fetches user_info for all past users and updates ratings in DB.
 func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 	start := time.Now()
 	defer waitForCFRateLimit2(start)
@@ -414,7 +378,7 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 	fmt.Printf("[worker] Refreshing past user ratings for JobID %s\n", p.JobID)
 
 	if p.JobID != "" {
-		// 1. PLACE THE FIX HERE: Creates the SQLite row if triggered by the 4-hour cron
+	
 		if p.JobID == "cron_refresh_rating" {
 			_ = repository.CreateSyncLog(p.JobID, 1)
 		}
@@ -432,7 +396,7 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 		if p.JobID != "" {
 			updateJobError(p.JobID, "DB error: "+err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID) // Releases lock on error exit
+			ReleaseActiveJobLock(p.JobID) 
 		}
 		return err
 	}
@@ -448,7 +412,7 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 				SetJobState(p.JobID, state, 10*time.Minute)
 			}
 			_ = repository.UpdateSyncLog(p.JobID, "completed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID) // Releases lock if no users found
+			ReleaseActiveJobLock(p.JobID) 
 		}
 		return nil
 	}
@@ -528,8 +492,7 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 			SetJobState(p.JobID, state, 10*time.Minute)
 		}
 		_ = repository.UpdateSyncLog(p.JobID, "completed", 1, "[]")
-		
-		// 2. PLACE THE LOCK RELEASE HERE: Standard cleanup before returning nil
+	
 		ReleaseActiveJobLock(p.JobID) 
 	}
 
@@ -537,80 +500,7 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 }
 
 
-// HandleCFCheckStatus checks if Codeforces API is alive (system.status).
-func HandleCFCheckStatus(ctx context.Context, t *asynq.Task) error {
-	start := time.Now()
-	defer waitForCFRateLimit(start)
-
-	var p CFCheckStatusPayload
-	if err := json.Unmarshal(t.Payload(), &p); err != nil {
-		return err
-	}
-
-	fmt.Printf("[worker] Checking CF API status for JobID %s\n", p.JobID)
-
-	if p.JobID != "" {
-		state, err := GetJobState(p.JobID)
-		if err == nil && state != nil {
-			state.Total = 1
-			state.Current = 0
-			SetJobState(p.JobID, state, 10*time.Minute)
-		}
-	}
-
-	resp, err := http.Get("https://codeforces.com/api/system.status")
-	if err != nil {
-		if p.JobID != "" {
-			updateJobError(p.JobID, "Codeforces API unreachable")
-			ReleaseActiveJobLock(p.JobID)
-		}
-		return nil
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		if p.JobID != "" {
-			updateJobError(p.JobID, fmt.Sprintf("CF returned non-200: HTTP %d", resp.StatusCode))
-			ReleaseActiveJobLock(p.JobID)
-		}
-		return nil
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		if p.JobID != "" {
-			updateJobError(p.JobID, "Invalid JSON from CF")
-			ReleaseActiveJobLock(p.JobID)
-		}
-		return nil
-	}
-
-	if result["status"] != "OK" {
-		if p.JobID != "" {
-			updateJobError(p.JobID, "CF API status not OK")
-			ReleaseActiveJobLock(p.JobID)
-		}
-		return nil
-	}
-
-	if p.JobID != "" {
-		state, err := GetJobState(p.JobID)
-		if err == nil && state != nil {
-			state.Current = 1
-			state.Status = "completed"
-			state.CompletedAt = time.Now().Format(time.RFC3339)
-			SetJobState(p.JobID, state, 10*time.Minute)
-		}
-		ReleaseActiveJobLock(p.JobID)
-	}
-
-	return nil
-}
-
-
-// HandleCFAddContest fetches a single contest from CF standings API and adds it to DB.
+// fetches a single contest from CF standings API and adds it to DB.
 func HandleCFAddContest(ctx context.Context, t *asynq.Task) error {
 	start := time.Now()
 	defer waitForCFRateLimit(start)
@@ -699,8 +589,6 @@ func HandleCFAddContest(ctx context.Context, t *asynq.Task) error {
 
 	return nil
 }
-
-// --- Helpers ---
 
 func detectDivision(contestName string) string {
 	if strings.Contains(contestName, "Div. 2") {

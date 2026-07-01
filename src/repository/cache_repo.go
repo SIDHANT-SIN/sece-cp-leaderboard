@@ -12,13 +12,13 @@ import (
 
 const LeaderboardCacheKey = "leaderboard:cache"
 
-// SetLeaderboardCache serializes and saves the pre-computed leaderboard to Upstash Redis
+//  set the redis value of leaderboard
+
 func SetLeaderboardCache(users, contests []map[string]interface{}, results map[int]map[int]map[string]interface{}, userTotals map[int]int) error {
 	if database.RedisClient == nil {
-		return nil // Caching disabled if Redis is not connected
+		return nil;
 	}
 
-	// Convert int keys to strings for JSON-compliant serialization
 	strResults := make(map[string]map[string]map[string]interface{})
 	for uID, contestMap := range results {
 		strContestMap := make(map[string]map[string]interface{})
@@ -46,11 +46,10 @@ func SetLeaderboardCache(users, contests []map[string]interface{}, results map[i
 	}
 
 	ctx := context.Background()
-	// Set cache with a 7-day expiration time
 	return database.RedisClient.Set(ctx, LeaderboardCacheKey, string(jsonData), 7*24*time.Hour).Err()
 }
 
-// GetLeaderboardCache fetches and parses the cached leaderboard data from Redis
+//  fetches and parses the cached leaderboard data from Redis
 func GetLeaderboardCache() (
 	users []map[string]interface{},
 	contests []map[string]interface{},
@@ -85,7 +84,6 @@ log.Printf("Redis GET took %v", time.Since(st))
 		return nil, nil, nil, nil, err
 	}
 
-	// Fix float64 -> int conversions for unmarshaled JSON maps
 	for _, u := range rawData.Users {
 		for k, v := range u {
 			if f, ok := v.(float64); ok {
@@ -101,7 +99,6 @@ log.Printf("Redis GET took %v", time.Since(st))
 		}
 	}
 
-	// Convert string keys back to int keys
 	intResults := make(map[int]map[int]map[string]interface{})
 	for uIDStr, contestMap := range rawData.Results {
 		uID, err := strconv.Atoi(uIDStr)

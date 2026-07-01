@@ -5,23 +5,20 @@ import (
 	"fmt"
 	"time"
 
-	//"github.com/redis/go-redis/v9"
 	"leaderboard/src/database"
 )
 
-// PurgeAsynqMetadata clears or forces low TTLs on internal Asynq tracking keys.
 func PurgeAsynqMetadata() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	fmt.Println("[maintenance] Starting Redis optimization sweep...")
 
-	// 1. 💥 FIXED: Scan and completely NUKE all scheduler history keys (handles UUID suffixes)
 	var historyCursor uint64
 	for {
 		var keys []string
 		var err error
-		// This wildcard pattern grabs 'asynq:scheduler_history' AND 'asynq:scheduler_history:xxxx-xxxx'
+	
 		keys, historyCursor, err = database.RedisClient.Scan(ctx, historyCursor, "asynq:scheduler_history*", 100).Result()
 		if err != nil {
 			fmt.Printf("[maintenance] Error scanning scheduler history keys: %v\n", err)
@@ -42,14 +39,12 @@ func PurgeAsynqMetadata() {
 		}
 	}
 
-	// 2. Clear out old crashed server/worker/scheduler instance registration lists
 	trackingKeys := []string{"asynq:servers", "asynq:workers", "asynq:schedulers"}
 	for _, key := range trackingKeys {
 		_ = database.RedisClient.Del(ctx, key)
 	}
 	fmt.Println("[maintenance] Reset active structural instances (servers, workers, schedulers)")
 
-	// 3. Scan and enforce a tight 1-Day TTL on daily stats counters 
 	var statsCursor uint64
 	for {
 		var keys []string
@@ -61,7 +56,7 @@ func PurgeAsynqMetadata() {
 		}
 
 		for _, key := range keys {
-			// Overriding default 90-day hardcoded Asynq TTL down to 24 hours
+			
 			database.RedisClient.Expire(ctx, key, 24*time.Hour)
 		}
 

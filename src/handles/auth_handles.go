@@ -52,26 +52,13 @@ func AdminLogin(c *gin.Context) {
 	)
 }
 
-// func AdminPage(c *gin.Context) {
-
-// 	cookie, err := c.Cookie("admin_logged_in")
-
-// 	if err != nil || cookie != cfg.AdminPasswordHash {
-// 		c.Redirect(http.StatusSeeOther, "/admin_login")
-// 		return
-// 	}
-
-// 	c.HTML(http.StatusOK, "admin.tmpl", nil)
-// }
 func AdminPage(c *gin.Context) {
-	// 1. Auth Guard: Verify the admin session cookie
 	cookie, err := c.Cookie("admin_logged_in")
 	if err != nil || cookie != cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
 
-	// 2. Fetch the latest 10 sync runs from Turso
 	rows, err := repository.GetRecentSyncHistory(10)
 	history := []map[string]interface{}{}
 
@@ -99,7 +86,6 @@ func AdminPage(c *gin.Context) {
 				&completedAt,
 			)
 			if err != nil {
-				// Skips row if scanning fails
 				continue 
 			}
 
@@ -115,25 +101,10 @@ func AdminPage(c *gin.Context) {
 		}
 	}
 
-	// 3. Inject the real data into the template instead of 'nil'
 	c.HTML(http.StatusOK, "admin.tmpl", gin.H{
 		"history": history,
 		"error":   nil,
 	})
-}
-func AdminLogout(c *gin.Context) {
-
-	c.SetCookie(
-		"admin_logged_in",
-		"",
-		-1,
-		"/",
-		"",
-		false,
-		true,
-	)
-
-	c.Redirect(http.StatusSeeOther, "/admin")
 }
 
 func MaintainerLogin(c *gin.Context) {
@@ -146,7 +117,7 @@ func MaintainerLogin(c *gin.Context) {
 
 		c.SetCookie(
 			"maintainer_logged_in",
-			"true",
+			cfg.MaintainerPassword,
 			3600*24*2,
 			"/",
 			"",
@@ -171,7 +142,7 @@ func MaintainerDashboard(c *gin.Context) {
 
 	cookie, err := c.Cookie("maintainer_logged_in")
 
-	if err != nil || cookie != "true" {
+	if err != nil || cookie != cfg.MaintainerPassword {
 		c.Redirect(http.StatusSeeOther, "/maintainer")
 		return
 	}
@@ -183,7 +154,7 @@ func MaintainerICPCPage(c *gin.Context) {
 
 	cookie, err := c.Cookie("maintainer_logged_in")
 
-	if err != nil || cookie != "true" {
+	if err != nil || cookie != cfg.MaintainerPassword {
 		c.Redirect(http.StatusSeeOther, "/maintainer")
 		return
 	}

@@ -7,7 +7,6 @@ import (
 	"leaderboard/src/database"
 	"leaderboard/src/routes"
 	"leaderboard/src/workers"
-	//"leaderboard/src/handles"
 )
 
 func main() {
@@ -19,14 +18,12 @@ func main() {
 
 	database.ConnectRedis(cfg)
 
-	// Initialize Asynq worker client, server, and scheduler
 	if cfg.RedisURL != "" {
 		redisOpt, err := workers.ParseRedisOpt(cfg.RedisURL)
 		if err != nil {
 			log.Fatalf("Failed to parse Redis URL for Asynq: %v", err)
 		}
 
-		// This runs synchronously before the background routines spin up.
 		workers.PurgeAsynqMetadata()
 
 		workers.InitClient(redisOpt)
@@ -40,5 +37,8 @@ func main() {
 
 	port := cfg.Port
 
-	r.Run(":" + port)
+	if err := r.Run(":" + port); 
+	err != nil {
+		log.Fatal(err)
+	}
 }

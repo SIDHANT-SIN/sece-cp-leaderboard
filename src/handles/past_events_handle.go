@@ -21,7 +21,7 @@ type Batch struct {
 
 type Timeline struct {
 	Date    string
-	Title   string // Optional, left blank below
+	Title   string 
 	Slides  []Slide
 	Winners []Winner
 	AspectRatio  string
@@ -33,15 +33,11 @@ type Slide struct {
 }
 
 type Winner struct {
-	Tier  string // "gold", "silver", "bronze", "female"
-	Label string // "1st", "2nd", "3rd", "Best female performer"
+	Tier  string 
+	Label string 
 	Name  string
 }
 
-// --- Helper function to auto-generate the image URLs ---
-// x = batch year (3, 4, or 5)
-// y = event number (1 or 2)
-// maxZ = number of photos (6 or 5)
 func generateSlides(projectRef string, folderName string, x, y, maxZ int) []Slide {
 	var slides []Slide
 	baseURL := fmt.Sprintf("https://%s.supabase.co/storage/v1/object/public/%s", projectRef, folderName)
@@ -55,24 +51,20 @@ func generateSlides(projectRef string, folderName string, x, y, maxZ int) []Slid
 	return slides
 }
 
-// --- Main Handler ---
 
 func PastEvents(c *gin.Context, cfg *configs.Config) {
-	// Extract your Supabase config details
-	supaBaseRef := cfg.SupaBase // e.g., "xxxx"
+	supaBaseRef := cfg.SupaBase 
 	folderName := cfg.FolderName
 
-	// Below is the editable data structure. 
-	// Edit the Date and Name fields manually.
 	batches := []Batch{
 		{
-			Label: "2023", // x = 3
+			Label: "2023", 
 			Timelines: []Timeline{
 				{
-					Date:   "30th August, 2024", // y = 1
+					Date:   "30th August, 2024", 
 					AspectRatio: "1/1",
 					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 3, 1, 5), // 6 photos
+					Slides: generateSlides(supaBaseRef, folderName, 3, 1, 5), 
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Abhishek Jawanpuria"},
 						{Tier: "silver", Label: "2nd", Name: "Ayush Agarwal"},
@@ -81,10 +73,10 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 					},
 				},
 				{
-					Date:   "2nd February, 2025", // y = 2
+					Date:   "2nd February, 2025", 
 					AspectRatio: "1/1",
 					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 3, 2, 5), // 5 photos
+					Slides: generateSlides(supaBaseRef, folderName, 3, 2, 5), 
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Daksh Panwar"},
 						{Tier: "silver", Label: "2nd", Name: "Shubham Pandey"},
@@ -94,13 +86,13 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 			},
 		},
 		{
-			Label: "2024", // x = 4
+			Label: "2024", 
 			Timelines: []Timeline{
 				{
-					Date:   "12th April, 2025", // y = 1
+					Date:   "12th April, 2025", 
 					AspectRatio: "16/9",
 					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 4, 1, 6), // 6 photos
+					Slides: generateSlides(supaBaseRef, folderName, 4, 1, 6), 
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Adarsh Raj"},
 						{Tier: "silver", Label: "2nd", Name: "Amit Kumar"},
@@ -109,10 +101,10 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 					},
 				},
 				{
-					Date:   "6th September, 2025", // y = 2
+					Date:   "6th September, 2025", 
 					AspectRatio: "16/9",
 					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 4, 2, 5), // 5 photos
+					Slides: generateSlides(supaBaseRef, folderName, 4, 2, 5),
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Priyanshu"},
 						{Tier: "silver", Label: "2nd", Name: "Adarsh Raj"},
@@ -122,13 +114,13 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 			},
 		},
 		{
-			Label: "2025", // x = 5
+			Label: "2025", 
 			Timelines: []Timeline{
 				{
-					Date:   "18th April, 2026", // y = 1
+					Date:   "18th April, 2026", 
 					AspectRatio: "16/9",
 					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 5, 1, 6), // 6 photos
+					Slides: generateSlides(supaBaseRef, folderName, 5, 1, 6), 
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Ujjawal Kumar"},
 						{Tier: "silver", Label: "2nd", Name: "Prashant Sharma"},
@@ -141,15 +133,7 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 	}
 
 	slices.Reverse(batches)
-	
-	// pageData := PageData{
-	// 	Batches: batches,
-	// }
 
-	//c.HTML(http.StatusOK, "events.tmpl", pageData)
-	// c.HTML(http.StatusOK, "events.tmpl", gin.H{
-	// 	"Batches": pageData,
-	// })
 	c.HTML(http.StatusOK, "events.tmpl", gin.H{
 		"Batches": batches,
 	})

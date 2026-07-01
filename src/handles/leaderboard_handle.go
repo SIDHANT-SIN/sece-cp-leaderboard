@@ -11,18 +11,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ShowLeaderboard renders the primary leaderboard with ranked active users
+// renders the current leaderboard 
 func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
-	// 1. Attempt to fetch leaderboard data from Upstash Redis Cache
-//	st := time.Now()
+
 
 	cachedUsers, cachedContests, cachedResults, cachedUserTotals, err := repository.GetLeaderboardCache()
 	if err == nil && cachedUsers != nil && len(cachedUsers) > 0 {
 		fmt.Printf("cache hit")
 		
-          
-
-    //     log.Printf("Redis GET took %v", time.Since(st))
 		c.HTML(http.StatusOK, "leaderboard.tmpl", gin.H{
 			"users":      cachedUsers,
 			"contests":   cachedContests,
@@ -33,8 +29,7 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 		return
 	}
 
-	// 2. Cache Miss: Retrieve from database
-
+	
 	fmt.Printf("cache miss")
 	userRows, err := repository.GetUsers()
 	if err != nil {
@@ -75,8 +70,8 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 		})
 	}
 
-	results := make(map[int]map[int]map[string]interface{}) // user_id -> contest_id -> result
-	userTotals := make(map[int]int)                         // user_id -> total points
+	results := make(map[int]map[int]map[string]interface{}) 
+	userTotals := make(map[int]int)                         
 
 	rows, err := repository.GetAllResults()
 	if err == nil {
@@ -107,7 +102,6 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 		}
 	}
 
-	// Sort users by total points descending
 	type userWithTotal struct {
 		User  map[string]interface{}
 		Total int
@@ -124,7 +118,6 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 		return userList[i].Total > userList[j].Total
 	})
 
-	// Assign ranks
 	rankedUsers := make([]map[string]interface{}, len(userList))
 	for i, ut := range userList {
 		rankedUsers[i] = ut.User
@@ -132,7 +125,6 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 		rankedUsers[i]["total_points"] = ut.Total
 	}
 
-	// Save computed values to Redis cache asynchronously or silently ignore errors
 	err = repository.SetLeaderboardCache(rankedUsers, contests, results, userTotals)
 	if err != nil {
 		fmt.Printf("Warning: failed to save leaderboard cache: %v\n", err)
@@ -150,11 +142,11 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 	})
 }
 
-// ShowPastLeaderboard renders the past leaderboard filtered by batch_year
+//  renders the past leaderboard filtered by batch year
 func ShowPastLeaderboard(c *gin.Context) {
 	batch := c.Query("batch")
 	if batch == "" {
-		batch = "2023" // default
+		batch = "2023" 
 	}
 
 	rows, err := repository.GetPastUsersByBatch(batch)
@@ -180,12 +172,10 @@ func ShowPastLeaderboard(c *gin.Context) {
 		})
 	}
 
-	// Sort by max_rating DESC
 	sort.Slice(users, func(i, j int) bool {
 		return users[i]["max_rating"].(int) > users[j]["max_rating"].(int)
 	})
 
-	// Assign rank
 	for i := range users {
 		users[i]["rank"] = i + 1
 	}
@@ -196,7 +186,7 @@ func ShowPastLeaderboard(c *gin.Context) {
 	})
 }
 
-// rebuildLeaderboardCache recalculates the entire leaderboard and stores it in Redis
+// recalculates the entire leaderboard and stores it in Redis
 func rebuildLeaderboardCache() error {
 	userRows, err := repository.GetUsers()
 	if err != nil {

@@ -18,7 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ShowContests lists all contests
+// lists all contests
 func ShowContests(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
 	if err != nil || cookie != cfg.AdminPasswordHash {
@@ -52,73 +52,7 @@ func ShowContests(c *gin.Context) {
 	c.HTML(http.StatusOK, "admin_contests.tmpl", gin.H{"contests": contests})
 }
 
-// // AddContest handles adding a single contest using Codeforces API
-// func AddContest(c *gin.Context) {
-// 	cookie, err := c.Cookie("admin_logged_in")
-// 	if err != nil || cookie != cfg.AdminPasswordHash {
-// 		c.Redirect(http.StatusSeeOther, "/admin_login")
-// 		return
-// 	}
-
-// 	cfid := c.PostForm("cfid")
-
-// 	resp, err := http.Get("https://codeforces.com/api/contest.standings?contestId=" + cfid)
-// 	if err != nil {
-// 		fmt.Println("HTTP ERROR:", err)
-// 		c.String(http.StatusBadRequest, "Could not fetch contest info from Codeforces")
-// 		return
-// 	}
-// 	defer resp.Body.Close()
-
-// 	fmt.Println("Contest ID:", cfid)
-// 	fmt.Println("Status Code:", resp.StatusCode)
-
-// 	if resp.StatusCode != 200 {
-// 		if resp.StatusCode >= 500 {
-// 			c.String(
-// 				http.StatusBadGateway,
-// 				"Codeforces API server is currently unavailable (HTTP %d). Try later after a few minutes or hours.",
-// 				resp.StatusCode,
-// 			)
-// 			return
-// 		}
-
-// 		c.String(
-// 			http.StatusBadRequest,
-// 			"Could not fetch contest info from Codeforces (HTTP %d)",
-// 			resp.StatusCode,
-// 		)
-// 		return
-// 	}
-
-// 	var apiResp struct {
-// 		Status string `json:"status"`
-// 		Result struct {
-// 			Contest struct {
-// 				Id        int    `json:"id"`
-// 				Name      string `json:"name"`
-// 				StartTime int64  `json:"startTimeSeconds"`
-// 			} `json:"contest"`
-// 		} `json:"result"`
-// 	}
-
-// 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil || apiResp.Status != "OK" {
-// 		c.String(http.StatusBadRequest, "Could not parse contest info from Codeforces")
-// 		return
-// 	}
-
-// 	err = repository.AddContest(apiResp.Result.Contest.Id, apiResp.Result.Contest.Name, apiResp.Result.Contest.StartTime)
-// 	if err != nil {
-// 		c.String(http.StatusBadRequest, "Could not add contest: %v", err)
-// 		return
-// 	}
-
-// 	rebuildLeaderboardCache()
-
-// 	c.Redirect(http.StatusSeeOther, "/admin/contests")
-// }
-
-// AddContest handles adding a single contest using Codeforces API asynchronously
+// Adds a contest if the codeforces ID is correct
 func AddContest(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
 	if err != nil || cookie != cfg.AdminPasswordHash {
@@ -132,27 +66,22 @@ func AddContest(c *gin.Context) {
 		return
 	}
 
-	// 1. Pre-Flight Check: Ensure no active task collision
 	statusData, err := repository.GetCurrentSyncStatus()
 	if err == nil && statusData["status"] == "processing" {
 		c.String(http.StatusConflict, "Another sync operation is currently running (JobID: %v). Please wait.", statusData["job_id"])
 		return
 	}
 
-	// 2. Generate a unique Job identity
 	jobID := fmt.Sprintf("add_contest_%s_%d", cfid, time.Now().Unix())
 
-	// 3. Initialize the SQLite Sync History log (1 expected item)
 	_ = repository.CreateSyncLog(jobID, 1)
 
-	// 4. Build the Asynq task payload using your workers package constructor
 	task, err := workers.NewCFAddContestTask(jobID, cfid)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Failed to build background task: %v", err)
 		return
 	}
 
-	// 5. Fire: Fetch the client using your getter function 👈
 	asynqClient := workers.GetClient()
 	if asynqClient == nil {
 		c.String(http.StatusInternalServerError, "Asynq client instance is not initialized in workers package")
@@ -165,12 +94,11 @@ func AddContest(c *gin.Context) {
 		return
 	}
 
-	// 6. Forget: Redirect straight back to the admin contests page
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
 
 
-// DeleteContest deletes a contest and its results
+// deletes a contest and its results
 func DeleteContest(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
 	if err != nil || cookie != cfg.AdminPasswordHash {
@@ -180,14 +108,12 @@ func DeleteContest(c *gin.Context) {
 
 	id := c.PostForm("id")
 
-	// Delete all results associated with this contest first
 	err = repository.DeleteResultsByContest(id)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Could not delete contest results: %v", err)
 		return
 	}
 
-	// Delete the contest itself
 	err = repository.DeleteContest(id)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Could not delete contest: %v", err)
@@ -199,33 +125,7 @@ func DeleteContest(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
 
-// DeleteAllContests deletes all contests and all user results
-func DeleteAllContests(c *gin.Context) {
-	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
-		c.Redirect(http.StatusSeeOther, "/admin_login")
-		return
-	}
-
-	err = repository.DeleteAllResults()
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Could not delete contest results: %v", err)
-		return
-	}
-
-	err = repository.DeleteAllContests()
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Could not delete all contests: %v", err)
-		return
-	}
-
-	rebuildLeaderboardCache()
-
-	c.Redirect(http.StatusSeeOther, "/admin/contests")
-}
-
-
-// RefreshResults triggers recalculation of scores/ranks for all contests
+// triggers recalculation of ranks for contests count defined by user
 func RefreshResults(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
 	if err != nil || cookie != cfg.AdminPasswordHash {
@@ -243,16 +143,12 @@ func RefreshResults(c *gin.Context) {
 		}
 	}
 
-	err = refreshAllUserContestResults(limit) // Passing limit down
+	err = refreshAllUserContestResults(limit) 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
-	// Cache rebuild intentionally NOT called here — the job was just enqueued
-	// and hasn't written anything yet. GetSyncStatus rebuilds the cache once
-	// it observes the job has actually finished (see below).
-	// Return a JSON 200 OK so the JS fetch() initiates polling smoothly
 	c.JSON(http.StatusOK, gin.H{"status": "started"})
 }
 
@@ -278,59 +174,10 @@ func calculatePoints(rank, total int, div string) int {
 	return score
 }
 
-// // Refresh all user standings and point calculations asynchronously via Asynq
-// func refreshAllUserContestResults() error {
-// 	fmt.Println("\n================ ASYNC REFRESH INITIALIZED ================")
 
-// 	// 1. Pre-Flight Check: Ensure no active collision
-// 	statusData, err := repository.GetCurrentSyncStatus()
-// 	if err == nil && statusData["status"] == "processing" {
-// 		return fmt.Errorf("another sync job (%v) is currently active", statusData["job_id"])
-// 	}
-
-// 	// 2. Generate unique Job ID for tracking
-// 	jobID := fmt.Sprintf("batch_refresh_%d", time.Now().Unix())
-
-// 	// 3. Calculate total expected items from database for progress tracking
-// 	totalContests := 0
-// 	contestRows, err := repository.GetContestIDs()
-// 	if err == nil {
-// 		for contestRows.Next() {
-// 			totalContests++
-// 		}
-// 		contestRows.Close()
-// 	}
-// 	if totalContests == 0 {
-// 		totalContests = 1 // Prevent boundary errors if table is empty
-// 	}
-
-// 	// 4. Create the initial sync history tracking row in SQLite
-// 	_ = repository.CreateSyncLog(jobID, totalContests)
-
-// 	// 5. Build your background loop task payload
-// 	task, err := workers.NewCFBatchRefreshTask(jobID)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to construct batch task: %v", err)
-// 	}
-
-// 	// 6. Enqueue using your getter function 👈
-// 	asynqClient := workers.GetClient()
-// 	if asynqClient == nil {
-// 		return fmt.Errorf("asynq client is uninitialized in workers package")
-// 	}
-
-// 	_, err = asynqClient.Enqueue(task, asynq.Queue(workers.QueueCritical))
-// 	if err != nil {
-// 		return fmt.Errorf("failed to dispatch task to redis: %v", err)
-// 	}
-
-// 	fmt.Printf("[handles] Batch refresh task successfully pushed to queue. JobID: %s\n", jobID)
-// 	return nil
-// }
-
+// refresh all user result of limit count
 
 func refreshAllUserContestResults(limit int) error {
-	fmt.Println("\n================ ASYNC REFRESH INITIALIZED ================")
 
 	statusData, err := repository.GetCurrentSyncStatus()
 	if err == nil && statusData["status"] == "processing" {
@@ -340,7 +187,7 @@ func refreshAllUserContestResults(limit int) error {
 	jobID := fmt.Sprintf("batch_refresh_%d", time.Now().Unix())
 
 	totalContests := 0
-	contestRows, err := repository.GetContests() // Using GetContests to count ALL
+	contestRows, err := repository.GetContests() 
 	if err == nil {
 		for contestRows.Next() {
 			totalContests++
@@ -351,17 +198,15 @@ func refreshAllUserContestResults(limit int) error {
 		totalContests = 1 
 	}
 
-	// Boundary check against DB
 	if limit > 0 {
 		if limit > totalContests {
 			return fmt.Errorf("requested limit (%d) exceeds total contests (%d)", limit, totalContests)
 		}
-		totalContests = limit // Adjust UI progress bar to the limit
+		totalContests = limit 
 	}
 
 	_ = repository.CreateSyncLog(jobID, totalContests)
 
-	// Temporarily embed the limit in Redis so the worker finds it seamlessly 
 	if limit > 0 {
 		database.RedisClient.Set(context.Background(), fmt.Sprintf("sync_limit:%s", jobID), limit, 30*time.Minute)
 	}
@@ -380,8 +225,6 @@ func refreshAllUserContestResults(limit int) error {
 	if err != nil {
 		return fmt.Errorf("failed to dispatch task to redis: %v", err)
 	}
-
-	fmt.Printf("[handles] Batch refresh task pushed to queue. JobID: %s, Limit: %d\n", jobID, limit)
 	return nil
 }
 
@@ -428,8 +271,7 @@ func ShowAdminDashboard(c *gin.Context) {
 				continue
 			}
 
-			// 1. Calculate time difference in seconds for "started_at"
-			// Adjust the layout string ("2006-01-02 15:04:05") if your database stores timestamps differently
+	
 			timeLayout := "2006-01-02 15:04:05" 
 			var durationSeconds int64 = 0
 
@@ -445,7 +287,6 @@ func ShowAdminDashboard(c *gin.Context) {
         completedAt = endT.In(loc).Format(timeLayout)
                }
 
-			// 2. Handle failedContestIDs based on status
 			switch status {
             case "cancelled":
 				failedContestIDs = "Idk you cancelled mid way"
@@ -453,18 +294,15 @@ func ShowAdminDashboard(c *gin.Context) {
 				failedContestIDs = "[None]"
 			}
 
-			// 3. Process job_id based on starting character
 			if len(jobID) > 0 {
 				firstChar := jobID[0]
 				switch firstChar {
              case 'a':
-					// Safely remove the last 11 characters if length permits
 					if len(jobID) > 11 {
 						jobID = jobID[:len(jobID)-11]
 					} else {
 						jobID = ""
 					}
-					// Split by underscore and join with space
 					words := strings.Split(jobID, "_")
 					for i, word := range words {
          if len(word) > 0 && word[0] >= 'a' && word[0] <= 'z' {
@@ -489,7 +327,7 @@ func ShowAdminDashboard(c *gin.Context) {
 				"successful_contests": successful,
 				"total_contests":      total,
 				"failed_contest_ids":  failedContestIDs,
-				"started_at":          durationSeconds, // Named exactly as requested, now holds seconds taken
+				"started_at":          durationSeconds,
 				"completed_at":        completedAt,
 			})
 		}
@@ -500,7 +338,7 @@ func ShowAdminDashboard(c *gin.Context) {
 		"error":   nil,
 	})
 }
-// GetSyncStatus returns JSON progress data for the running background sync task
+// returns JSON progress data for the running background sync task
 func GetSyncStatus(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
 	if err != nil || cookie != cfg.AdminPasswordHash {
@@ -508,21 +346,12 @@ func GetSyncStatus(c *gin.Context) {
 		return
 	}
 
-	// Fetch current progress metrics from the repository layer
 	statusData, err := repository.GetCurrentSyncStatus()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch sync status"})
 		return
 	}
 
-	// GetCurrentSyncStatus only ever reports "processing" or "idle" (the
-	// worker deletes its Redis keys as soon as it finishes, before any poll
-	// can observe "completed"/"cancelled" there, and the matching SQL row
-	// has already flipped status away from 'processing' too). admin.tmpl's
-	// JS reloads the page on exactly this processing -> idle transition, so
-	// catching that same transition here lets us rebuild the cache right
-	// before the response that triggers the reload — guaranteeing the
-	// reload sees fresh data instead of whatever was cached before refresh.
 	status, _ := statusData["status"].(string)
 	ctx := context.Background()
 
@@ -539,7 +368,7 @@ func GetSyncStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, statusData)
 }
 
-// CancelSync sets a termination flag in Redis to gracefully halt the current sync loop
+// CancelSync sets a termination flag in Redis to halt the current sync loop
 func CancelSync(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
 	if err != nil || cookie != cfg.AdminPasswordHash {
@@ -547,7 +376,6 @@ func CancelSync(c *gin.Context) {
 		return
 	}
 
-	// Write cancellation trigger to Redis/DB state layer
 	err = repository.SetSyncCancelSignal()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set cancellation signal"})

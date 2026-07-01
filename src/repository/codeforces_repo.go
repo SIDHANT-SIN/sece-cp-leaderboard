@@ -4,7 +4,7 @@ import (
 	"leaderboard/src/database"
 )
 
-// GetPastUserHandles returns all codeforces handles for past users
+//  returns all codeforces handles for past users
 func GetPastUserHandles() ([]string, error) {
 	rows, err := database.DB.Query("SELECT codeforces_handle FROM past_users")
 	if err != nil {
@@ -23,7 +23,7 @@ func GetPastUserHandles() ([]string, error) {
 	return handles, nil
 }
 
-// UpdatePastUserRating updates a past user's rating stats
+//  updates a past user's rating stats
 func UpdatePastUserRating(rating, maxRating int, title, handle string) error {
 	_, err := database.DB.Exec(`
 		UPDATE past_users
@@ -36,7 +36,7 @@ func UpdatePastUserRating(rating, maxRating int, title, handle string) error {
 	return err
 }
 
-// GetUsersList returns a list of users for dropdowns or error pages
+// returns a list of users for dropdowns
 func GetUsersList() []map[string]interface{} {
 	rows, err := database.DB.Query("SELECT codeforces_handle, display_name FROM users")
 	if err != nil {

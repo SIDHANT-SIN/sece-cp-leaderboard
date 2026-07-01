@@ -8,9 +8,7 @@ import (
 )
 
 type Config struct {
-	AccountName        string
-	AccountKey         string
-	ContainerName      string
+
 
 	AdminUsername      string
 	AdminPasswordHash  string
@@ -35,9 +33,6 @@ func LoadConfig() *Config {
 	}
 
 	return &Config{
-		AccountName:        os.Getenv("AZURE_STORAGE_ACCOUNT"),
-		AccountKey:         os.Getenv("AZURE_STORAGE_KEY"),
-		ContainerName:      os.Getenv("AZURE_CONTAINER_NAME"),
 
 		AdminUsername:      os.Getenv("ADMIN_USERNAME"),
 		AdminPasswordHash:  os.Getenv("ADMIN_PASSWORD"),

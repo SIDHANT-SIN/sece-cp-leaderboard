@@ -4,7 +4,7 @@ import "log"
 
 func CreateTables() {
 
-	    // Create users table: stores tracked Codeforces users
+	    // Create users table
     _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         codeforces_handle TEXT UNIQUE NOT NULL,
@@ -13,7 +13,7 @@ func CreateTables() {
     if err != nil {
         log.Fatal("Failed to create users table:", err)
     }
-	// create past user table : store all past users
+	// create past user table 
    _, err = DB.Exec(`CREATE TABLE IF NOT EXISTS past_users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     codeforces_handle TEXT UNIQUE NOT NULL,
@@ -28,7 +28,7 @@ if err != nil {
     log.Fatal("Failed to create past_users table:", err)
 }
 
-// Create sync_history table: stores Codeforces sync job status
+// Create sync_history table
 _, err = DB.Exec(`CREATE TABLE IF NOT EXISTS sync_history (
     job_id TEXT PRIMARY KEY,
     status TEXT NOT NULL,
@@ -44,7 +44,7 @@ if err != nil {
 
 
 
-    // Create contests table: stores relevant Codeforces contests
+    // Create contests table
     _, err = DB.Exec(`CREATE TABLE IF NOT EXISTS contests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         codeforces_contest_id INTEGER UNIQUE NOT NULL,
@@ -106,7 +106,7 @@ if err != nil {
 }
 
 
-    // Create user_contest_results table: stores each user's result in each contest
+    // Create user_contest_results table
     _, err = DB.Exec(`CREATE TABLE IF NOT EXISTS user_contest_results (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,

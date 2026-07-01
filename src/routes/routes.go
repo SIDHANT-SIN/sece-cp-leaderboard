@@ -19,6 +19,9 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 
 	r.LoadHTMLGlob("templates/*")
 
+
+	// login and dashboards
+
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/leaderboard")
 	})
@@ -33,19 +36,17 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 
 	r.POST("/admin", handles.AdminLogin)
 
-	r.GET("/logout", handles.AdminLogout)
-
 	r.GET("/maintainer", handles.MaintainerLoginPage)
 
 	r.POST("/maintainer/login", handles.MaintainerLogin)
 
 	r.GET("/maintainer/dashboard", handles.MaintainerDashboard)
 
-	r.GET("/maintainer/icpc_pyq", handles.MaintainerICPCPage)
+
+
+
 
 	r.POST("/admin/check_cf_api", handles.CheckCFAPI)
-
-	r.POST("/maintainer/icpc_pyq", handles.CreateICPCProblem)
 
 	r.GET("/maintainer/users", handles.ShowPastUsers)
 
@@ -66,16 +67,14 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 
 	r.POST("/admin/contests/delete", handles.DeleteContest)
 
-	r.POST("/admin/contests/delete_all", handles.DeleteAllContests)
-
-	//r.POST("/admin/contests/fetch", handles.FetchContests)
-
-	r.POST("/admin/refresh_results", handles.RefreshResults)
-	
+	// admin refresh logs
+    
 	r.GET("/admin/sync_status", handles.GetSyncStatus)
+
 	r.POST("/admin/cancel_sync", handles.CancelSync)
 
 	// Leaderboard routes
+
 	r.GET("/leaderboard", func(c *gin.Context) {
     handles.ShowLeaderboard(c, cfg)
          })
@@ -87,19 +86,30 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 
 	r.GET("/past_leaderboard", handles.ShowPastLeaderboard)
 
+
+
+
 	// Refresh rating route
+
 	r.POST("/maintainer/refresh_rating", handles.RefreshRating)
 
+	r.POST("/admin/refresh_results", handles.RefreshResults)
+
 	//health checks and cron jobs
+
 	r.GET("/api/health/ping", handles.SendPing)
 
 	r.POST("/api/maintenance/purge", handles.Purg)
 
 
 	//icpc routes
+
 	r.GET("/problems", handles.ShowProblemsNew)
 
- 
+	r.GET("/maintainer/icpc_pyq", handles.MaintainerICPCPage)
+
+	r.POST("/maintainer/icpc_pyq", handles.CreateICPCProblem)
+
 
 	return r
 }

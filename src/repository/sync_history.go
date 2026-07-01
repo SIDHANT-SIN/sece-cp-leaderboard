@@ -5,23 +5,12 @@ package repository
 import (
 	"context"
 	"database/sql"
-	//"fmt"
 	"leaderboard/src/database"
 	"strconv"
 	"time"
 
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
-
-// func GetRecentSyncHistory(limit int) (*sql.Rows, error) {
-// 	return database.DB.Query(`
-// 		SELECT job_id, status, successful_contests, total_contests, 
-// 		       failed_contest_ids, started_at, COALESCE(completed_at, '-')
-// 		FROM sync_history
-// 		ORDER BY started_at DESC
-// 		LIMIT ?
-// 	`, limit)
-// }
 
 func GetRecentSyncHistory(limit int) (*sql.Rows, error) {
     return database.DB.Query(`
@@ -60,18 +49,15 @@ func UpdateSyncLog(jobID string, status string, successful int, failedIDs string
 
 	return err
 }
-// GetCurrentSyncStatus retrieves real-time progress counters from Redis
-// and falls back to looking for an active SQL log if Redis is cold.
+
 func GetCurrentSyncStatus() (map[string]interface{}, error) {
 	ctx := context.Background()
 
-	// 1. Read all progress metrics from Redis
 	status, _ := database.RedisClient.Get(ctx, "sync:status").Result()
 	currentStr, _ := database.RedisClient.Get(ctx, "sync:current").Result()
 	totalStr, _ := database.RedisClient.Get(ctx, "sync:total").Result()
 	jobID, _ := database.RedisClient.Get(ctx, "sync:job_id").Result()
 
-	// 2. CRITICAL FIX: If Redis has active processing signals, trust it!
 	if status == "processing" || totalStr != "" {
 		current, _ := strconv.Atoi(currentStr)
 		total, _ := strconv.Atoi(totalStr)
@@ -83,11 +69,9 @@ func GetCurrentSyncStatus() (map[string]interface{}, error) {
 		}, nil
 	}
 
-	// 3. Fallback: If Redis is cold, check Turso DB for an active processing row
 	var dbJobID, dbStatus string
 	var dbTotal, dbSuccessful int
 	
-	// Added successful_contests to the scan path
 	err := database.DB.QueryRow(`
 		SELECT job_id, status, total_contests, COALESCE(successful_contests, 0)
 		FROM sync_history 
@@ -106,7 +90,6 @@ func GetCurrentSyncStatus() (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	// Return actual live numbers from DB row metrics instead of hardcoded 0
 	return map[string]interface{}{
 		"job_id":  dbJobID,
 		"status":  dbStatus,
@@ -115,10 +98,7 @@ func GetCurrentSyncStatus() (map[string]interface{}, error) {
 	}, nil
 }
 
-
-// SetSyncCancelSignal sets an ephemeral abort flag in Redis that the loop worker checks
 func SetSyncCancelSignal() error {
 	ctx := context.Background()
-	// Sets an abort flag valid for 15 minutes to guarantee it drops off automatically
 	return database.RedisClient.Set(ctx, "sync:cancel_signal", "1", 15*time.Minute).Err()
 }

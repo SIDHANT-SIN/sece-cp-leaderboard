@@ -6,20 +6,16 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// Task type constants — one per CF API endpoint
 const (
-	TypeCFRatingChanges = "cf:rating_changes" // contest.ratingChanges (per contest)
-	TypeCFRefreshRating = "cf:refresh_rating" // user.info (batch all past user handles)
-	TypeCFCheckStatus   = "cf:check_status"   // system.status
+	TypeCFRatingChanges = "cf:rating_changes" 
+	TypeCFRefreshRating = "cf:refresh_rating" 
+	TypeCFCheckStatus   = "cf:check_status"   
 	
-	TypeCFAddContest    = "cf:add_contest"    // contest.standings (single)
+	TypeCFAddContest    = "cf:add_contest"   
 
-	TypeCFBatchRefresh  = "cf:batch_refresh"  // batch refresh all contests (loops through all contests)
+	TypeCFBatchRefresh  = "cf:batch_refresh"  
 )
 
-// Note: Queue names (QueueCritical, QueueDefault, QueueLow) are defined in client.go
-
-// --- Payloads ---
 
 type CFRatingChangesPayload struct {
 	JobID       string `json:"job_id"`
@@ -44,7 +40,6 @@ type CFBatchRefreshPayload struct {
 	JobID string `json:"job_id"`
 }
 
-// --- Task constructors ---
 
 func NewCFRatingChangesTask(jobID string, contestDBID, cfContestID int) (*asynq.Task, error) {
 	payload, err := json.Marshal(CFRatingChangesPayload{

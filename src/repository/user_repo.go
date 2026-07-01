@@ -12,7 +12,6 @@ func GetUsers() (*sql.Rows, error) {
 		SELECT id, codeforces_handle, display_name
 		FROM users
 	`)
-	//db.Query("SELECT id, codeforces_handle, display_name FROM users")
 }
 
 func AddUser(handle string, displayName string) error {
@@ -24,22 +23,9 @@ func AddUser(handle string, displayName string) error {
 		handle,
 		displayName,
 	)
-	//_, err = db.Exec("INSERT INTO users (codeforces_handle, display_name) VALUES (?, ?)", handle, displayName)
 
 	return err
 }
-
-// func DeleteUser(id string) error {
-
-// 	_, err := database.DB.Exec(
-// 		`DELETE FROM users WHERE id = ?`,
-// 		id,
-// 	)
-
-// 	//_, err = db.Exec("DELETE FROM users WHERE id = ?", id)
-
-// 	return err
-// }
 
 func DeleteUser(id string) error {
 
