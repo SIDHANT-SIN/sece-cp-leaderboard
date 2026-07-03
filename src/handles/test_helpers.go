@@ -5,7 +5,6 @@ import (
 	"net/http"
 )
 
-
 type MockRows struct {
 	Data  [][]any
 	Index int
@@ -29,14 +28,14 @@ func (m *MockRows) Scan(dest ...any) error {
 	for i := range dest {
 		switch d := dest[i].(type) {
 		case *int:
-			
+
 			switch v := row[i].(type) {
 			case int:
 				*d = v
 			case int64:
 				*d = int(v)
 			}
-		case *int64: 
+		case *int64:
 			switch v := row[i].(type) {
 			case int:
 				*d = int64(v)
@@ -53,7 +52,6 @@ func (m *MockRows) Scan(dest ...any) error {
 func (m *MockRows) Close() error {
 	return nil
 }
-
 
 type MockRepository struct {
 	PastUsersRows *MockRows

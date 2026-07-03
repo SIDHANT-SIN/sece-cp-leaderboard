@@ -34,7 +34,6 @@ func TestClientAndState_Integration(t *testing.T) {
 		_ = rdb.Close()
 	}()
 
-	
 	InitClient(redisOpt)
 	if GetClient() == nil {
 		t.Fatal("Expected GetClient to return initialized client, got nil")
@@ -53,7 +52,7 @@ func TestClientAndState_Integration(t *testing.T) {
 		Status:    "running",
 		Total:     100,
 		Current:   50,
-		StartedAt: time.Now().Truncate(time.Second), 
+		StartedAt: time.Now().Truncate(time.Second),
 	}
 
 	err = SetJobState(ctx, rdb, jobID, expectedState, 1*time.Hour)
@@ -121,7 +120,7 @@ func TestClientAndState_Integration(t *testing.T) {
 }
 
 func TestParseRedisOpt(t *testing.T) {
-	
+
 	opt, err := ParseRedisOpt("redis://user:pass@localhost:6379/1")
 	if err != nil {
 		t.Errorf("Expected no error for valid URI, got %v", err)
@@ -142,15 +141,14 @@ func TestCancelTask(t *testing.T) {
 
 	InitClient(asynq.RedisClientOpt{Addr: mr.Addr()})
 
-	
 	err := CancelTask("some-fake-task-id")
 	if err == nil {
-		
+
 		t.Log("CancelTask succeeded on fake task (expected behavior in some Asynq versions)")
 	}
 }
 func TestReleaseActiveJobLock_Coverage(t *testing.T) {
-	mr := setupTestRedis(t) 
+	mr := setupTestRedis(t)
 	defer mr.Close()
 	ctx := context.Background()
 
@@ -161,7 +159,6 @@ func TestReleaseActiveJobLock_Coverage(t *testing.T) {
 		t.Error("Expected no release for wrong ID")
 	}
 
-	
 	released, err = ReleaseActiveJobLock(ctx, database.RedisClient, "job123")
 	if err != nil || !released {
 		t.Error("Expected successful release for correct ID")
@@ -169,7 +166,7 @@ func TestReleaseActiveJobLock_Coverage(t *testing.T) {
 }
 
 func TestClientQueues_Uninitialized(t *testing.T) {
-	
+
 	originalClient := client
 	client = nil
 	defer func() { client = originalClient }()
@@ -181,7 +178,6 @@ func TestClientQueues_Uninitialized(t *testing.T) {
 		t.Errorf("Expected uninitialized error, got %v", err)
 	}
 
-	
 	_, err = EnqueueDefault(dummyTask)
 	if err == nil || err.Error() != "asynq client not initialized" {
 		t.Errorf("Expected uninitialized error, got %v", err)
@@ -218,7 +214,7 @@ func TestClientQueues_Initialized(t *testing.T) {
 }
 
 func TestCancelTask_Uninitialized(t *testing.T) {
-	
+
 	originalOpt := redisConnOpt
 	redisConnOpt = nil
 	defer func() { redisConnOpt = originalOpt }()

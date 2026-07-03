@@ -28,7 +28,7 @@ func setupTestRouter() *gin.Engine {
 }
 
 func TestShowLeaderboard_CacheHit(t *testing.T) {
-	
+
 	mockRepo := &MockRepository{
 		LeaderboardCacheUsers: []map[string]interface{}{
 			{"id": 1, "handle": "testuser", "display_name": "Test User"},
@@ -49,9 +49,9 @@ func TestShowLeaderboard_CacheHit(t *testing.T) {
 }
 
 func TestShowLeaderboard_CacheMiss_Success(t *testing.T) {
-	
+
 	mockRepo := &MockRepository{
-		LeaderboardCacheUsers: nil, 
+		LeaderboardCacheUsers: nil,
 		UsersRows: &MockRows{
 			Data: [][]any{{1, "handle1", "User One"}, {2, "handle2", "User Two"}},
 		},
@@ -60,8 +60,8 @@ func TestShowLeaderboard_CacheMiss_Success(t *testing.T) {
 		},
 		AllResultsRows: &MockRows{
 			Data: [][]any{
-				{1, 10, 1, 100}, 
-				{2, 10, 2, 50},  
+				{1, 10, 1, 100},
+				{2, 10, 2, 50},
 			},
 		},
 	}
@@ -80,7 +80,7 @@ func TestShowLeaderboard_CacheMiss_Success(t *testing.T) {
 }
 
 func TestShowLeaderboard_DBErrorUsers(t *testing.T) {
-	
+
 	mockRepo := &MockRepository{
 		LeaderboardCacheUsers: nil,
 		UsersErr:              errors.New("db connection failed"),
@@ -96,7 +96,6 @@ func TestShowLeaderboard_DBErrorUsers(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 
-
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "DB error")
 }
@@ -104,7 +103,7 @@ func TestShowLeaderboard_DBErrorUsers(t *testing.T) {
 func TestShowPastLeaderboard_Success(t *testing.T) {
 	mockRepo := &MockRepository{
 		PastUsersByBatchRows: &MockRows{
-			
+
 			Data: [][]any{
 				{1, "pastuser", "Past User", 1500, 1600, "Expert", 2023},
 				{2, "pro_user", "Pro User", 1800, 1900, "Candidate Master", 2023},
@@ -116,7 +115,6 @@ func TestShowPastLeaderboard_Success(t *testing.T) {
 
 	r := setupTestRouter()
 	r.GET("/past_leaderboard", handler.ShowPastLeaderboard)
-
 
 	req, _ := http.NewRequest(http.MethodGet, "/past_leaderboard?batch=2023", nil)
 	w := httptest.NewRecorder()

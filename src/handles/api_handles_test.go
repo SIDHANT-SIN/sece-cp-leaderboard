@@ -1,5 +1,7 @@
 //go:build integration
 // +build integration
+
+//
 package handles
 
 import (
@@ -139,7 +141,7 @@ func TestPurg_Unauthorized(t *testing.T) {
 	r.POST("/api/purge", handler.Purg)
 
 	req, _ := http.NewRequest(http.MethodPost, "/api/purge", nil)
-	
+
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -153,10 +155,9 @@ func TestPurg_Unauthorized(t *testing.T) {
 }
 
 func TestDefaultHTTPClient_Get(t *testing.T) {
-	
+
 	client := &DefaultHTTPClient{}
 
-	
 	_, err := client.Get("http://invalid-url-that-doesnt-exist.loc")
 	assert.Error(t, err)
 }
@@ -166,7 +167,6 @@ func TestPurg_FailsSweep(t *testing.T) {
 		CronSecret: "super-secret-token",
 	}
 	handler := NewAPIHandler(&MockHTTPClient{}, cfg)
-
 
 	database.RedisClient = redis.NewClient(&redis.Options{})
 

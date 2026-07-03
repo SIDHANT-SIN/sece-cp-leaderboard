@@ -16,7 +16,6 @@ import (
 func TestSetupRoutes_AndRegistry(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-
 	err := os.MkdirAll("templates", 0755)
 	assert.NoError(t, err)
 	dummyFile := filepath.Join("templates", "dummy.html")
@@ -28,7 +27,6 @@ func TestSetupRoutes_AndRegistry(t *testing.T) {
 	r := SetupRoutes(cfg)
 	assert.NotNil(t, r)
 
-	
 	routesToTest := []struct {
 		url          string
 		expectedCode int
@@ -80,7 +78,7 @@ func TestSetupRoutes_AndRegistry(t *testing.T) {
 	for _, route := range registeredRoutes {
 		if expectedMethod, exists := expectedRoutes[route.Path]; exists {
 			assert.Equal(t, expectedMethod, route.Method, "Route %s registered with wrong method", route.Path)
-			
+
 			delete(expectedRoutes, route.Path)
 		}
 	}

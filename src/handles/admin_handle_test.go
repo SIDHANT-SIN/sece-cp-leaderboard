@@ -25,7 +25,7 @@ import (
 )
 
 func setupAdminTestRouter() *gin.Engine {
-	
+
 	database.RedisClient = redis.NewClient(&redis.Options{})
 
 	gin.SetMode(gin.TestMode)
@@ -373,7 +373,7 @@ func TestRefreshResults_ExceedsLimit(t *testing.T) {
 	cfg := &configs.Config{AdminPasswordHash: "hashed_secret"}
 	mockRepo := &MockRepository{
 		ContestsRows: &MockRows{
-			Data: [][]any{{1, 1001, "Contest A", 1600000000}}, 
+			Data: [][]any{{1, 1001, "Contest A", 1600000000}},
 		},
 	}
 	handler := NewAdminHandler(mockRepo, &MockCacheBuilder{}, cfg)
@@ -411,7 +411,7 @@ func TestCancelSync_RepoError(t *testing.T) {
 }
 
 func TestAddContest_SuccessPath(t *testing.T) {
-	
+
 	mr, _ := miniredis.Run()
 	defer mr.Close()
 	workers.InitClient(asynq.RedisClientOpt{Addr: mr.Addr()})
@@ -434,14 +434,12 @@ func TestAddContest_SuccessPath(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 
-	
 	assert.Equal(t, http.StatusSeeOther, w.Code)
 	assert.Equal(t, "/admin/contests", w.Header().Get("Location"))
 }
 
-
 func TestGetSyncStatus_StateTransitions(t *testing.T) {
-	
+
 	mr, _ := miniredis.Run()
 	defer mr.Close()
 	database.RedisClient = redis.NewClient(&redis.Options{Addr: mr.Addr()})
@@ -455,7 +453,6 @@ func TestGetSyncStatus_StateTransitions(t *testing.T) {
 	r := setupAdminTestRouter()
 	r.GET("/admin/sync-status", handler.GetSyncStatus)
 
-	
 	req, _ := http.NewRequest(http.MethodGet, "/admin/sync-status", nil)
 	req.AddCookie(&http.Cookie{Name: "admin_logged_in", Value: "hashed_secret"})
 	w1 := httptest.NewRecorder()
@@ -463,15 +460,13 @@ func TestGetSyncStatus_StateTransitions(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w1.Code)
 
-	
 	mockRepo.SyncStatus = map[string]interface{}{"status": "idle"}
 	w2 := httptest.NewRecorder()
 	r.ServeHTTP(w2, req)
 
 	assert.Equal(t, http.StatusOK, w2.Code)
 
-	
 	val, err := database.RedisClient.Get(context.Background(), "sync:was_processing").Result()
-	assert.NotNil(t, err) 
+	assert.NotNil(t, err)
 	assert.Equal(t, "", val)
 }

@@ -49,7 +49,6 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 		repo,
 	)
 
-
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/leaderboard")
 	})
@@ -60,7 +59,6 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 
 	r.GET("/admin", adminHandler.ShowAdminDashboard)
 
-
 	r.GET("/admin_login", authHandler.AdminLoginPage)
 
 	r.POST("/admin", authHandler.AdminLogin)
@@ -70,7 +68,6 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 	r.POST("/maintainer/login", authHandler.MaintainerLogin)
 
 	r.GET("/maintainer/dashboard", authHandler.MaintainerDashboard)
-
 
 	r.GET("/maintainer/users", maintainerUsersHandler.ShowPastUsers)
 

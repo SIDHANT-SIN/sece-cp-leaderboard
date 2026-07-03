@@ -69,7 +69,6 @@ func TestShowUsers_Unauthenticated(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 
-	
 	assert.Equal(t, http.StatusSeeOther, w.Code)
 	assert.Equal(t, "/admin", w.Header().Get("Location"))
 }
@@ -160,7 +159,7 @@ func TestAddUser_RepoError(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "Admin Dashboard") 
+	assert.Contains(t, w.Body.String(), "Admin Dashboard")
 }
 
 func TestDeleteUser_Authenticated_Success(t *testing.T) {

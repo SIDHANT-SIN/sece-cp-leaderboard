@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func TestNewCFRatingChangesTask(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -83,7 +82,6 @@ func TestNewCFRefreshRatingTask(t *testing.T) {
 		})
 	}
 }
-
 
 func TestNewCFCheckStatusTask(t *testing.T) {
 	tests := []struct {

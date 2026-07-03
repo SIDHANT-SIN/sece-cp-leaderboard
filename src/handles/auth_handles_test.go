@@ -140,7 +140,7 @@ func TestAdminPage_Unauthenticated(t *testing.T) {
 	r.GET("/admin", handler.AdminPage)
 
 	req, _ := http.NewRequest(http.MethodGet, "/admin", nil)
-	
+
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, req)

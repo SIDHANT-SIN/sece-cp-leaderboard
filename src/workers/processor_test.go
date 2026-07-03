@@ -1,5 +1,7 @@
 //go:build integration
 // +build integration
+
+//
 package workers
 
 import (
@@ -25,7 +27,6 @@ func setupTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("failed to open sqlite in-memory db: %v", err)
 	}
 
-	
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,7 +124,6 @@ func TestCalculatePoints(t *testing.T) {
 	}
 }
 
-
 func TestRateLimiters(t *testing.T) {
 	t.Run("waitForCFRateLimit", func(t *testing.T) {
 		start := time.Now()
@@ -173,7 +173,7 @@ func TestHandlers_InvalidPayloads(t *testing.T) {
 }
 
 func TestHandleCFRefreshRating_HTTPParsing(t *testing.T) {
-	
+
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -220,7 +220,7 @@ func TestHandleCFRefreshRating_HTTPParsing(t *testing.T) {
 }
 
 func TestHandleCFAddContest_HTTPParsing(t *testing.T) {
-	
+
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -326,7 +326,7 @@ func TestProcessSingleContestStandings(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to retrieve upserted result: %v", err)
 	}
-	
+
 	if points == 0 {
 		t.Errorf("Expected non-zero points, got %d", points)
 	}
@@ -394,7 +394,6 @@ func TestHandleCFBatchRefresh_FullCoverage(t *testing.T) {
 		t.Errorf("HandleCFBatchRefresh failed: %v", err)
 	}
 }
-
 
 func TestHandleCFRefreshRating_CronCoverage(t *testing.T) {
 	db := setupTestDB(t)
@@ -465,9 +464,8 @@ func TestUpdateJobError_Coverage(t *testing.T) {
 	}
 }
 
-
 func TestCalculatePoints_Default(t *testing.T) {
-	
+
 	pts := calculatePoints(10, 100, "Div. Unknown")
 	if pts == 0 {
 		t.Errorf("Expected points > 0 for default division calculation, got %d", pts)
@@ -475,7 +473,7 @@ func TestCalculatePoints_Default(t *testing.T) {
 }
 
 func TestUpdateJobError_EdgeCases(t *testing.T) {
-	
+
 	updateJobError(context.Background(), "", "error message")
 
 	mr := setupTestRedis(t)
@@ -533,7 +531,6 @@ func TestHandleCFAddContest_Failures(t *testing.T) {
 	payload, _ := json.Marshal(CFAddContestPayload{JobID: "job_add", CFContestID: "999"})
 	task := asynq.NewTask("add_contest", payload)
 
-
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -568,7 +565,7 @@ func TestHandleCFAddContest_Failures(t *testing.T) {
 	}
 
 	// 3. DB Failure
-	db.Exec("DROP TABLE contests") 
+	db.Exec("DROP TABLE contests")
 	mockResp = `{"status": "OK", "result": {"contest": {"id": 999, "name": "Test"}}}`
 
 	err = HandleCFAddContest(ctx, task)
@@ -672,13 +669,11 @@ func TestHandleCFBatchRefresh_DBFailures(t *testing.T) {
 	db.Close()
 	mr.Close()
 
-	
 	db2 := setupTestDB(t)
 	mr2 := setupTestRedis(t)
 	db2.Exec("DROP TABLE contests")
 	err = HandleCFBatchRefresh(ctx, task)
 
-	
 	if err == nil || !strings.Contains(err.Error(), "no such table: contests") {
 		t.Errorf("Expected GetContests error, got: %v", err)
 	}
@@ -696,7 +691,6 @@ func TestHandleCFRatingChanges_DBFailures(t *testing.T) {
 	mr := setupTestRedis(t)
 	defer mr.Close()
 
-	
 	db.Exec("DROP TABLE users")
 
 	err := HandleCFRatingChanges(ctx, task)

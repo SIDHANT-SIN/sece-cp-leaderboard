@@ -511,7 +511,7 @@ func TestCreateICPCProblemUnauthorized(t *testing.T) {
 }
 
 func TestDefaultTaskEnqueuer(t *testing.T) {
-	
+
 	enqueuer := NewDefaultTaskEnqueuer()
 
 	err := enqueuer.EnqueueRefreshRatingTask("job123")

@@ -1,5 +1,7 @@
 //go:build integration
 // +build integration
+
+//
 package workers
 
 import (
@@ -11,7 +13,7 @@ import (
 )
 
 func TestStartServer_Integration(t *testing.T) {
-	
+
 	mr, err := miniredis.Run()
 	if err != nil {
 		t.Fatalf("Failed to start in-memory miniredis: %v", err)
