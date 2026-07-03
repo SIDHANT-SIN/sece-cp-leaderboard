@@ -3,7 +3,6 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"log"
 
 	"leaderboard/src/configs"
 
@@ -12,8 +11,7 @@ import (
 
 var DB *sql.DB
 
-func Connect(cfg *configs.Config) {
-
+func Connect(cfg *configs.Config) error {
 	connStr := fmt.Sprintf(
 		"%s?authToken=%s",
 		cfg.DBUrl,
@@ -22,8 +20,9 @@ func Connect(cfg *configs.Config) {
 
 	d, err := sql.Open("libsql", connStr)
 	if err != nil {
-		log.Fatal("Failed to open Turso database:", err)
+		return fmt.Errorf("failed to open Turso database: %w", err)
 	}
 
 	DB = d
+	return nil
 }

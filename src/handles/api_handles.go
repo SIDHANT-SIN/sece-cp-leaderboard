@@ -1,21 +1,37 @@
 package handles
 
-
 import (
 	"encoding/json"
 	"io"
-	
-	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"leaderboard/src/configs"
+	"leaderboard/src/database"
 	"leaderboard/src/workers"
-
+	"log"
+	"net/http"
 	"time"
-
 
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
 
+type DefaultHTTPClient struct{}
+
+func (*DefaultHTTPClient) Get(url string) (*http.Response, error) {
+	return http.Get(url)
+}
+
+type APIHandler struct {
+	client HTTPClient
+	cfg    *configs.Config
+}
+
+func NewAPIHandler(client HTTPClient, cfg *configs.Config) *APIHandler {
+	return &APIHandler{
+		client: client,
+		cfg:    cfg,
+	}
+}
 
 func waitForCFLimit(start time.Time) {
 	elapsed := time.Since(start)
@@ -25,12 +41,12 @@ func waitForCFLimit(start time.Time) {
 	}
 }
 
-func CheckCFAPI(c *gin.Context) {
+func (h *APIHandler) CheckCFAPI(c *gin.Context) {
 	start := time.Now()
 
 	url := "https://codeforces.com/api/system.status"
 
-	resp, err := http.Get(url)
+	resp, err := h.client.Get(url)
 	if err != nil {
 		waitForCFLimit(start)
 		c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -39,7 +55,11 @@ func CheckCFAPI(c *gin.Context) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	body, _ := io.ReadAll(resp.Body)
 
@@ -80,24 +100,29 @@ func CheckCFAPI(c *gin.Context) {
 	})
 }
 
-
 func SendPing(c *gin.Context) {
-	c.String(http.StatusOK, "pong");
+	c.String(http.StatusOK, "pong")
 }
 
-
-func Purg(c *gin.Context) {
+func (h *APIHandler) Purg(c *gin.Context) {
 	clientToken := c.GetHeader("X-Cron-Token")
 
-		if clientToken == "" || clientToken != cfg.CronSecret {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized access"})
-			return
-		}
+	if clientToken == "" || clientToken != h.cfg.CronSecret {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized access"})
+		return
+	}
 
-		workers.PurgeAsynqMetadata()
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "success",
-			"message": "Redis metadata purged and optimized successfully",
+	if err := workers.PurgeAsynqMetadata(database.RedisClient); err != nil {
+		log.Printf("Redis optimization sweep failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Failed to purge Redis metadata",
 		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "Redis metadata purged and optimized successfully",
+	})
 }

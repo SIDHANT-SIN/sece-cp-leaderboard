@@ -7,15 +7,14 @@ import (
 )
 
 const (
-	TypeCFRatingChanges = "cf:rating_changes" 
-	TypeCFRefreshRating = "cf:refresh_rating" 
-	TypeCFCheckStatus   = "cf:check_status"   
-	
-	TypeCFAddContest    = "cf:add_contest"   
+	TypeCFRatingChanges = "cf:rating_changes"
+	TypeCFRefreshRating = "cf:refresh_rating"
+	TypeCFCheckStatus   = "cf:check_status"
 
-	TypeCFBatchRefresh  = "cf:batch_refresh"  
+	TypeCFAddContest = "cf:add_contest"
+
+	TypeCFBatchRefresh = "cf:batch_refresh"
 )
-
 
 type CFRatingChangesPayload struct {
 	JobID       string `json:"job_id"`
@@ -39,7 +38,6 @@ type CFAddContestPayload struct {
 type CFBatchRefreshPayload struct {
 	JobID string `json:"job_id"`
 }
-
 
 func NewCFRatingChangesTask(jobID string, contestDBID, cfContestID int) (*asynq.Task, error) {
 	payload, err := json.Marshal(CFRatingChangesPayload{
@@ -83,7 +81,6 @@ func NewCFAddContestTask(jobID, cfContestID string) (*asynq.Task, error) {
 	}
 	return asynq.NewTask(TypeCFAddContest, payload), nil
 }
-
 
 func NewCFBatchRefreshTask(jobID string) (*asynq.Task, error) {
 	payload, err := json.Marshal(CFBatchRefreshPayload{

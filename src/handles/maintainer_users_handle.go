@@ -2,31 +2,102 @@ package handles
 
 import (
 	"fmt"
-	
+	"log"
 	"net/http"
 	"strconv"
-	
-    "time"
-	"leaderboard/src/repository"
-"leaderboard/src/workers"
-	"github.com/hibiken/asynq"
+	"time"
+
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
+
+	"leaderboard/src/configs"
+
+	"leaderboard/src/workers"
 )
 
-//  lists all past users
-func ShowPastUsers(c *gin.Context) {
+type TaskEnqueuer interface {
+	EnqueueRefreshRatingTask(jobID string) error
+	EnqueueAddContestTask(jobID, cfid string) error
+	EnqueueBatchRefreshTask(jobID string) error
+}
+
+type defaultTaskEnqueuer struct{}
+
+func NewDefaultTaskEnqueuer() TaskEnqueuer {
+	return &defaultTaskEnqueuer{}
+}
+
+func (d *defaultTaskEnqueuer) EnqueueRefreshRatingTask(jobID string) error {
+	task, err := workers.NewCFRefreshRatingTask(jobID)
+	if err != nil {
+		return err
+	}
+	client := workers.GetClient()
+	if client == nil {
+		return fmt.Errorf("Asynq client instance is not initialized")
+	}
+	_, err = client.Enqueue(task, asynq.Queue(workers.QueueDefault))
+	return err
+}
+
+func (d *defaultTaskEnqueuer) EnqueueAddContestTask(jobID, cfid string) error {
+	task, err := workers.NewCFAddContestTask(jobID, cfid)
+	if err != nil {
+		return err
+	}
+	client := workers.GetClient()
+	if client == nil {
+		return fmt.Errorf("Asynq client instance is not initialized")
+	}
+	_, err = client.Enqueue(task, asynq.Queue(workers.QueueCritical))
+	return err
+}
+
+func (d *defaultTaskEnqueuer) EnqueueBatchRefreshTask(jobID string) error {
+	task, err := workers.NewCFBatchRefreshTask(jobID)
+	if err != nil {
+		return err
+	}
+	client := workers.GetClient()
+	if client == nil {
+		return fmt.Errorf("Asynq client instance is not initialized")
+	}
+	_, err = client.Enqueue(task, asynq.Queue(workers.QueueCritical))
+	return err
+}
+
+type MaintainerUsersHandler struct {
+	cfg       *configs.Config
+	repo      Repository
+	taskQueue TaskEnqueuer
+}
+
+func NewMaintainerUsersHandler(cfg *configs.Config, repo Repository, taskQueue TaskEnqueuer) *MaintainerUsersHandler {
+	return &MaintainerUsersHandler{
+		cfg:       cfg,
+		repo:      repo,
+		taskQueue: taskQueue,
+	}
+}
+
+// lists all past users
+func (h *MaintainerUsersHandler) ShowPastUsers(c *gin.Context) {
 	cookie, err := c.Cookie("maintainer_logged_in")
 	if err != nil || cookie != "true" {
 		c.Redirect(http.StatusSeeOther, "/maintainer")
 		return
 	}
 
-	rows, err := repository.GetPastUsers()
+	rows, err := h.repo.GetPastUsers()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "DB error")
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close contestRows: %v", err)
+		}
+	}()
 
 	var pastUsers []map[string]interface{}
 	for rows.Next() {
@@ -52,8 +123,8 @@ func ShowPastUsers(c *gin.Context) {
 	})
 }
 
-//  adds a past user
-func AddPastUser(c *gin.Context) {
+// adds a past user
+func (h *MaintainerUsersHandler) AddPastUser(c *gin.Context) {
 	cookie, err := c.Cookie("maintainer_logged_in")
 	if err != nil || cookie != "true" {
 		c.Redirect(http.StatusSeeOther, "/maintainer")
@@ -70,7 +141,7 @@ func AddPastUser(c *gin.Context) {
 		return
 	}
 
-	err = repository.AddPastUser(handle, display, batch)
+	err = h.repo.AddPastUser(handle, display, batch)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Could not add user: %v", err)
 		return
@@ -80,7 +151,7 @@ func AddPastUser(c *gin.Context) {
 }
 
 // deletes a past user by id
-func DeletePastUser(c *gin.Context) {
+func (h *MaintainerUsersHandler) DeletePastUser(c *gin.Context) {
 	cookie, err := c.Cookie("maintainer_logged_in")
 	if err != nil || cookie != "true" {
 		c.Redirect(http.StatusSeeOther, "/maintainer")
@@ -88,7 +159,7 @@ func DeletePastUser(c *gin.Context) {
 	}
 
 	id := c.PostForm("id")
-	err = repository.DeletePastUser(id)
+	err = h.repo.DeletePastUser(id)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Delete failed: %v", err)
 		return
@@ -99,7 +170,7 @@ func DeletePastUser(c *gin.Context) {
 
 // refresh all handles rating
 
-func RefreshRating(c *gin.Context) {
+func (h *MaintainerUsersHandler) RefreshRating(c *gin.Context) {
 
 	cookie, err := c.Cookie("maintainer_logged_in")
 	if err != nil || cookie != "true" {
@@ -107,13 +178,13 @@ func RefreshRating(c *gin.Context) {
 		return
 	}
 
-	statusData, err := repository.GetCurrentSyncStatus()
+	statusData, err := h.repo.GetCurrentSyncStatus()
 	if err == nil && statusData["status"] == "processing" {
 		c.String(http.StatusConflict, "Another sync operation is currently running (JobID: %v). Please wait.", statusData["job_id"])
 		return
 	}
 
-	handles, err := repository.GetPastUserHandles()
+	handles, err := h.repo.GetPastUserHandles()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "DB error")
 		return
@@ -126,22 +197,9 @@ func RefreshRating(c *gin.Context) {
 
 	jobID := fmt.Sprintf("rating_refresh_%d", time.Now().Unix())
 
-	
-	_ = repository.CreateSyncLog(jobID, 1)
+	_ = h.repo.CreateSyncLog(jobID, 1)
 
-	task, err := workers.NewCFRefreshRatingTask(jobID)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Failed to build background task: %v", err)
-		return
-	}
-
-	asynqClient := workers.GetClient()
-	if asynqClient == nil {
-		c.String(http.StatusInternalServerError, "Asynq client instance is not initialized in workers package")
-		return
-	}
-
-	_, err = asynqClient.Enqueue(task, asynq.Queue(workers.QueueDefault))
+	err = h.taskQueue.EnqueueRefreshRatingTask(jobID)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Failed to enqueue task: %v", err)
 		return
@@ -150,11 +208,10 @@ func RefreshRating(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/maintainer/users")
 }
 
+func (h *MaintainerUsersHandler) CreateICPCProblem(c *gin.Context) {
 
-func CreateICPCProblem(c *gin.Context) {
-	
 	cookie, err := c.Cookie("maintainer_logged_in")
-	if err != nil || cookie != cfg.MaintainerPassword {
+	if err != nil || cookie != h.cfg.MaintainerPassword {
 		c.Redirect(http.StatusSeeOther, "/maintainer")
 		return
 	}

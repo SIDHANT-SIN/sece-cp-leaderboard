@@ -3,33 +3,43 @@ package handles
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"log"
 	"net/http"
 
 	"leaderboard/src/configs"
-	"leaderboard/src/repository"
 
 	"github.com/gin-gonic/gin"
 )
 
-var cfg = configs.LoadConfig()
+type AuthHandler struct {
+	cfg  *configs.Config
+	repo Repository
+}
 
-func AdminLoginPage(c *gin.Context) {
+func NewAuthHandler(cfg *configs.Config, repo Repository) *AuthHandler {
+	return &AuthHandler{
+		cfg:  cfg,
+		repo: repo,
+	}
+}
+
+func (h *AuthHandler) AdminLoginPage(c *gin.Context) {
 	c.HTML(http.StatusOK, "admin_login.tmpl", nil)
 }
 
-func MaintainerLoginPage(c *gin.Context) {
+func (h *AuthHandler) MaintainerLoginPage(c *gin.Context) {
 	c.HTML(http.StatusOK, "maintainer_login.tmpl", nil)
 }
 
-func AdminLogin(c *gin.Context) {
+func (h *AuthHandler) AdminLogin(c *gin.Context) {
 
 	name := c.PostForm("username")
 	password := c.PostForm("password")
 
 	hashp := sha256.Sum256([]byte(password))
 
-	if cfg.AdminPasswordHash == hex.EncodeToString(hashp[:]) &&
-		cfg.AdminUsername == name {
+	if h.cfg.AdminPasswordHash == hex.EncodeToString(hashp[:]) &&
+		h.cfg.AdminUsername == name {
 
 		c.SetCookie(
 			"admin_logged_in",
@@ -52,18 +62,22 @@ func AdminLogin(c *gin.Context) {
 	)
 }
 
-func AdminPage(c *gin.Context) {
+func (h *AuthHandler) AdminPage(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
 
-	rows, err := repository.GetRecentSyncHistory(10)
+	rows, err := h.repo.GetRecentSyncHistory(10)
 	history := []map[string]interface{}{}
 
 	if err == nil {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Printf("failed to close response body: %v", err)
+			}
+		}()
 
 		for rows.Next() {
 			var (
@@ -71,9 +85,9 @@ func AdminPage(c *gin.Context) {
 				status           string
 				successful       int
 				total            int
-				failedContestIDs  string
+				failedContestIDs string
 				startedAt        string
-				completedAt       string
+				completedAt      string
 			)
 
 			err := rows.Scan(
@@ -86,7 +100,7 @@ func AdminPage(c *gin.Context) {
 				&completedAt,
 			)
 			if err != nil {
-				continue 
+				continue
 			}
 
 			history = append(history, map[string]interface{}{
@@ -107,17 +121,17 @@ func AdminPage(c *gin.Context) {
 	})
 }
 
-func MaintainerLogin(c *gin.Context) {
+func (h *AuthHandler) MaintainerLogin(c *gin.Context) {
 
 	password := c.PostForm("password")
 
 	hashp := sha256.Sum256([]byte(password))
 
-	if hex.EncodeToString(hashp[:]) == cfg.MaintainerPassword {
+	if hex.EncodeToString(hashp[:]) == h.cfg.MaintainerPassword {
 
 		c.SetCookie(
 			"maintainer_logged_in",
-			cfg.MaintainerPassword,
+			h.cfg.MaintainerPassword,
 			3600*24*2,
 			"/",
 			"",
@@ -138,11 +152,11 @@ func MaintainerLogin(c *gin.Context) {
 	)
 }
 
-func MaintainerDashboard(c *gin.Context) {
+func (h *AuthHandler) MaintainerDashboard(c *gin.Context) {
 
 	cookie, err := c.Cookie("maintainer_logged_in")
 
-	if err != nil || cookie != cfg.MaintainerPassword {
+	if err != nil || cookie != h.cfg.MaintainerPassword {
 		c.Redirect(http.StatusSeeOther, "/maintainer")
 		return
 	}
@@ -150,11 +164,11 @@ func MaintainerDashboard(c *gin.Context) {
 	c.HTML(http.StatusOK, "maintainer_dashboard.tmpl", nil)
 }
 
-func MaintainerICPCPage(c *gin.Context) {
+func (h *AuthHandler) MaintainerICPCPage(c *gin.Context) {
 
 	cookie, err := c.Cookie("maintainer_logged_in")
 
-	if err != nil || cookie != cfg.MaintainerPassword {
+	if err != nil || cookie != h.cfg.MaintainerPassword {
 		c.Redirect(http.StatusSeeOther, "/maintainer")
 		return
 	}

@@ -1,27 +1,46 @@
 package handles
 
 import (
+	"log"
 	"net/http"
 
-	"leaderboard/src/repository"
+	"leaderboard/src/configs"
 
 	"github.com/gin-gonic/gin"
 )
 
-//  lists all users for admin
-func ShowUsers(c *gin.Context) {
+type AdminUsersHandler struct {
+	repo  Repository
+	cache CacheBuilder
+	cfg   *configs.Config
+}
+
+func NewAdminUsersHandler(repo Repository, cache CacheBuilder, cfg *configs.Config) *AdminUsersHandler {
+	return &AdminUsersHandler{
+		repo:  repo,
+		cache: cache,
+		cfg:   cfg,
+	}
+}
+
+// lists all users for admin
+func (h *AdminUsersHandler) ShowUsers(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
-		c.Redirect(http.StatusUnauthorized, "/admin")
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
+		c.Redirect(http.StatusSeeOther, "/admin")
 		return
 	}
 
-	rows, err := repository.GetUsers()
+	rows, err := h.repo.GetUsers()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "DB error")
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	var users []map[string]interface{}
 	for rows.Next() {
@@ -42,9 +61,9 @@ func ShowUsers(c *gin.Context) {
 }
 
 // adds a new Codeforces user
-func AddUser(c *gin.Context) {
+func (h *AdminUsersHandler) AddUser(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
@@ -52,36 +71,40 @@ func AddUser(c *gin.Context) {
 	handle := c.PostForm("handle")
 	displayName := c.PostForm("display_name")
 
-	err = repository.AddUser(handle, displayName)
+	err = h.repo.AddUser(handle, displayName)
 	if err != nil {
 		c.HTML(http.StatusBadRequest, "admin.tmpl", gin.H{
-			"Users": repository.GetUsersList(),
+			"Users": h.repo.GetUsersList(),
 			"error": "Could not add user: " + err.Error(),
 		})
 		return
 	}
 
-	rebuildLeaderboardCache()
+	if err := h.cache.RebuildLeaderboardCache(); err != nil {
+		log.Printf("failed to rebuild leaderboard cache: %v", err)
+	}
 
 	c.Redirect(http.StatusSeeOther, "/admin")
 }
 
-//  deletes a user by id
-func DeleteUser(c *gin.Context) {
+// deletes a user by id
+func (h *AdminUsersHandler) DeleteUser(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
-		c.Redirect(http.StatusUnauthorized, "/admin")
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
+		c.Redirect(http.StatusSeeOther, "/admin")
 		return
 	}
 
 	id := c.PostForm("id")
-	err = repository.DeleteUser(id)
+	err = h.repo.DeleteUser(id)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Could not delete user: %v", err)
 		return
 	}
 
-	rebuildLeaderboardCache()
+	if err := h.cache.RebuildLeaderboardCache(); err != nil {
+		log.Printf("failed to rebuild leaderboard cache: %v", err)
+	}
 
 	c.Redirect(http.StatusSeeOther, "/admin/users")
 }

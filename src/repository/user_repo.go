@@ -1,10 +1,9 @@
 package repository
 
 import (
-	"leaderboard/src/database"
 	"database/sql"
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
-
+	"leaderboard/src/database"
 )
 
 func GetUsers() (*sql.Rows, error) {

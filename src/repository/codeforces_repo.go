@@ -2,15 +2,20 @@ package repository
 
 import (
 	"leaderboard/src/database"
+	"log"
 )
 
-//  returns all codeforces handles for past users
+// returns all codeforces handles for past users
 func GetPastUserHandles() ([]string, error) {
 	rows, err := database.DB.Query("SELECT codeforces_handle FROM past_users")
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 
 	var handles []string
 	for rows.Next() {
@@ -23,7 +28,7 @@ func GetPastUserHandles() ([]string, error) {
 	return handles, nil
 }
 
-//  updates a past user's rating stats
+// updates a past user's rating stats
 func UpdatePastUserRating(rating, maxRating int, title, handle string) error {
 	_, err := database.DB.Exec(`
 		UPDATE past_users
@@ -42,12 +47,18 @@ func GetUsersList() []map[string]interface{} {
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 
 	var users []map[string]interface{}
 	for rows.Next() {
 		var handle, displayName string
-		rows.Scan(&handle, &displayName)
+		if err := rows.Scan(&handle, &displayName); err != nil {
+			log.Printf("failed to scan close row : %v", err)
+		}
 		users = append(users, map[string]interface{}{"Username": handle, "DisplayName": displayName})
 	}
 	return users

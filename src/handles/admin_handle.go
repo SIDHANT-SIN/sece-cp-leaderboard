@@ -3,14 +3,14 @@ package handles
 import (
 	"context"
 	"fmt"
-	"math"
+	"leaderboard/src/database"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"leaderboard/src/database"
-	"leaderboard/src/repository"
+	"leaderboard/src/configs"
 	"leaderboard/src/workers"
 
 	"github.com/hibiken/asynq"
@@ -18,20 +18,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type AdminHandle struct {
+	cfg   *configs.Config
+	repo  Repository
+	cache CacheBuilder
+}
+
+func NewAdminHandler(repo Repository, cache CacheBuilder, cfg *configs.Config) *AdminHandle {
+	return &AdminHandle{
+		cfg:   cfg,
+		repo:  repo,
+		cache: cache,
+	}
+}
+
 // lists all contests
-func ShowContests(c *gin.Context) {
+func (h *AdminHandle) ShowContests(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
 
-	rows, err := repository.GetContests()
+	rows, err := h.repo.GetContests()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "DB error")
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 
 	var contests []map[string]interface{}
 	for rows.Next() {
@@ -53,9 +71,9 @@ func ShowContests(c *gin.Context) {
 }
 
 // Adds a contest if the codeforces ID is correct
-func AddContest(c *gin.Context) {
+func (h *AdminHandle) AddContest(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
@@ -66,7 +84,7 @@ func AddContest(c *gin.Context) {
 		return
 	}
 
-	statusData, err := repository.GetCurrentSyncStatus()
+	statusData, err := h.repo.GetCurrentSyncStatus()
 	if err == nil && statusData["status"] == "processing" {
 		c.String(http.StatusConflict, "Another sync operation is currently running (JobID: %v). Please wait.", statusData["job_id"])
 		return
@@ -74,7 +92,7 @@ func AddContest(c *gin.Context) {
 
 	jobID := fmt.Sprintf("add_contest_%s_%d", cfid, time.Now().Unix())
 
-	_ = repository.CreateSyncLog(jobID, 1)
+	_ = h.repo.CreateSyncLog(jobID, 1)
 
 	task, err := workers.NewCFAddContestTask(jobID, cfid)
 	if err != nil {
@@ -87,7 +105,7 @@ func AddContest(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Asynq client instance is not initialized in workers package")
 		return
 	}
-	
+
 	_, err = asynqClient.Enqueue(task, asynq.Queue(workers.QueueCritical))
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Failed to enqueue task: %v", err)
@@ -97,38 +115,39 @@ func AddContest(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
 
-
 // deletes a contest and its results
-func DeleteContest(c *gin.Context) {
+func (h *AdminHandle) DeleteContest(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
 
 	id := c.PostForm("id")
 
-	err = repository.DeleteResultsByContest(id)
+	err = h.repo.DeleteResultsByContest(id)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Could not delete contest results: %v", err)
 		return
 	}
 
-	err = repository.DeleteContest(id)
+	err = h.repo.DeleteContest(id)
 	if err != nil {
 		c.String(http.StatusBadRequest, "Could not delete contest: %v", err)
 		return
 	}
 
-	rebuildLeaderboardCache()
+	if err := h.cache.RebuildLeaderboardCache(); err != nil {
+		log.Printf("failed to rebuild leaderboard cache: %v", err)
+	}
 
 	c.Redirect(http.StatusSeeOther, "/admin/contests")
 }
 
 // triggers recalculation of ranks for contests count defined by user
-func RefreshResults(c *gin.Context) {
+func (h *AdminHandle) RefreshResults(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
@@ -143,7 +162,7 @@ func RefreshResults(c *gin.Context) {
 		}
 	}
 
-	err = refreshAllUserContestResults(limit) 
+	err = h.refreshAllUserContestResults(limit)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
@@ -152,34 +171,11 @@ func RefreshResults(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "started"})
 }
 
-
-// Calculate points for a given rank
-func calculatePoints(rank, total int, div string) int {
-	if total == 0 || rank == 0 {
-		return 0
-	}
-	var d float64
-	switch div {
-	case "Div. 2", "Div. 1":
-		d = 1.0
-	case "Div. 3":
-		d = 0.67
-	case "Div. 4":
-		d = 0.33
-	default:
-		d = 1.0
-	}
-	baseParticipation := 2
-	score := int(math.Max(10*d*math.Log10(float64(total+1)/float64(rank+1)), 0)) + baseParticipation
-	return score
-}
-
-
 // refresh all user result of limit count
 
-func refreshAllUserContestResults(limit int) error {
+func (h *AdminHandle) refreshAllUserContestResults(limit int) error {
 
-	statusData, err := repository.GetCurrentSyncStatus()
+	statusData, err := h.repo.GetCurrentSyncStatus()
 	if err == nil && statusData["status"] == "processing" {
 		return fmt.Errorf("another sync job (%v) is currently active", statusData["job_id"])
 	}
@@ -187,25 +183,29 @@ func refreshAllUserContestResults(limit int) error {
 	jobID := fmt.Sprintf("batch_refresh_%d", time.Now().Unix())
 
 	totalContests := 0
-	contestRows, err := repository.GetContests() 
+	contestRows, err := h.repo.GetContests()
 	if err == nil {
 		for contestRows.Next() {
 			totalContests++
 		}
-		contestRows.Close()
+		defer func() {
+			if err := contestRows.Close(); err != nil {
+				log.Printf("failed to close Contest rows: %v", err)
+			}
+		}()
 	}
 	if totalContests == 0 {
-		totalContests = 1 
+		totalContests = 1
 	}
 
 	if limit > 0 {
 		if limit > totalContests {
 			return fmt.Errorf("requested limit (%d) exceeds total contests (%d)", limit, totalContests)
 		}
-		totalContests = limit 
+		totalContests = limit
 	}
 
-	_ = repository.CreateSyncLog(jobID, totalContests)
+	_ = h.repo.CreateSyncLog(jobID, totalContests)
 
 	if limit > 0 {
 		database.RedisClient.Set(context.Background(), fmt.Sprintf("sync_limit:%s", jobID), limit, 30*time.Minute)
@@ -228,23 +228,25 @@ func refreshAllUserContestResults(limit int) error {
 	return nil
 }
 
-
 // admin dashboard route handler
-func ShowAdminDashboard(c *gin.Context) {
-
+func (h *AdminHandle) ShowAdminDashboard(c *gin.Context) {
 
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.Redirect(http.StatusSeeOther, "/admin_login")
 		return
 	}
 
-	rows, err := repository.GetRecentSyncHistory(10)
+	rows, err := h.repo.GetRecentSyncHistory(10)
 
 	history := []map[string]interface{}{}
 
 	if err == nil {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Printf("failed to close response body: %v", err)
+			}
+		}()
 
 		for rows.Next() {
 			var (
@@ -271,8 +273,7 @@ func ShowAdminDashboard(c *gin.Context) {
 				continue
 			}
 
-	
-			timeLayout := "2006-01-02 15:04:05" 
+			timeLayout := "2006-01-02 15:04:05"
 			var durationSeconds int64 = 0
 
 			startT, errStart := time.Parse(timeLayout, startedAt)
@@ -283,12 +284,12 @@ func ShowAdminDashboard(c *gin.Context) {
 			}
 
 			loc, errLoc := time.LoadLocation("Asia/Kolkata")
-        if errLoc == nil && errEnd == nil {  
-        completedAt = endT.In(loc).Format(timeLayout)
-               }
+			if errLoc == nil && errEnd == nil {
+				completedAt = endT.In(loc).Format(timeLayout)
+			}
 
 			switch status {
-            case "cancelled":
+			case "cancelled":
 				failedContestIDs = "Idk you cancelled mid way"
 			case "completed":
 				failedContestIDs = "[None]"
@@ -297,7 +298,7 @@ func ShowAdminDashboard(c *gin.Context) {
 			if len(jobID) > 0 {
 				firstChar := jobID[0]
 				switch firstChar {
-             case 'a':
+				case 'a':
 					if len(jobID) > 11 {
 						jobID = jobID[:len(jobID)-11]
 					} else {
@@ -305,25 +306,25 @@ func ShowAdminDashboard(c *gin.Context) {
 					}
 					words := strings.Split(jobID, "_")
 					for i, word := range words {
-         if len(word) > 0 && word[0] >= 'a' && word[0] <= 'z' {
-            words[i] = strings.ToUpper(string(word[0])) + word[1:]
-        }
-    }
+						if len(word) > 0 && word[0] >= 'a' && word[0] <= 'z' {
+							words[i] = strings.ToUpper(string(word[0])) + word[1:]
+						}
+					}
 					jobID = strings.Join(words, " ")
 				case 'c':
 					jobID = "Cron Handles Rating"
-					durationSeconds=16
-				
-			     case 'b':
-				jobID = "All User Results"
-				 case 'r':
+					durationSeconds = 16
+
+				case 'b':
+					jobID = "All User Results"
+				case 'r':
 					jobID = "Handles Rating"
-			}
+				}
 			}
 
 			history = append(history, map[string]interface{}{
-				"job_id":               jobID,
-				"status":               status,
+				"job_id":              jobID,
+				"status":              status,
 				"successful_contests": successful,
 				"total_contests":      total,
 				"failed_contest_ids":  failedContestIDs,
@@ -338,15 +339,16 @@ func ShowAdminDashboard(c *gin.Context) {
 		"error":   nil,
 	})
 }
+
 // returns JSON progress data for the running background sync task
-func GetSyncStatus(c *gin.Context) {
+func (h *AdminHandle) GetSyncStatus(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.JSON(http.StatusUnauthorized, gin.H{"status": "unauthorized"})
 		return
 	}
 
-	statusData, err := repository.GetCurrentSyncStatus()
+	statusData, err := h.repo.GetCurrentSyncStatus()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch sync status"})
 		return
@@ -361,7 +363,9 @@ func GetSyncStatus(c *gin.Context) {
 		wasProcessing, _ := database.RedisClient.Get(ctx, "sync:was_processing").Result()
 		if wasProcessing == "1" {
 			database.RedisClient.Del(ctx, "sync:was_processing")
-			rebuildLeaderboardCache()
+			if err := h.cache.RebuildLeaderboardCache(); err != nil {
+				log.Printf("failed to rebuild leaderboard cache: %v", err)
+			}
 		}
 	}
 
@@ -369,14 +373,14 @@ func GetSyncStatus(c *gin.Context) {
 }
 
 // CancelSync sets a termination flag in Redis to halt the current sync loop
-func CancelSync(c *gin.Context) {
+func (h *AdminHandle) CancelSync(c *gin.Context) {
 	cookie, err := c.Cookie("admin_logged_in")
-	if err != nil || cookie != cfg.AdminPasswordHash {
+	if err != nil || cookie != h.cfg.AdminPasswordHash {
 		c.JSON(http.StatusUnauthorized, gin.H{"status": "unauthorized"})
 		return
 	}
 
-	err = repository.SetSyncCancelSignal()
+	err = h.repo.SetSyncCancelSignal()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set cancellation signal"})
 		return

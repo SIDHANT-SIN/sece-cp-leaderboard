@@ -1,12 +1,10 @@
 package repository
 
 import (
-	"leaderboard/src/database"
 	"database/sql"
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
-
+	"leaderboard/src/database"
 )
-
 
 func GetPastUsers() (*sql.Rows, error) {
 	return database.DB.Query(`

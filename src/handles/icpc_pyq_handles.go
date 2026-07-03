@@ -1,16 +1,26 @@
 package handles
 
 import (
+	"log"
 	"net/http"
-
-	"leaderboard/src/repository"
 
 	"github.com/gin-gonic/gin"
 )
 
-func ShowProblemsNew(c *gin.Context) {
+type Icpc_pyq struct {
+	repo Repository
+}
 
-	rows, err := repository.GetProblemsNew()
+func NewIcpc_pyq(repo Repository) *Icpc_pyq {
+	return &Icpc_pyq{
+		repo: repo,
+	}
+}
+
+// Bind to struct and use h.repo
+func (h *Icpc_pyq) ShowProblemsNew(c *gin.Context) {
+
+	rows, err := h.repo.GetProblemsNew()
 	if err != nil {
 		c.HTML(
 			http.StatusInternalServerError,
@@ -21,15 +31,17 @@ func ShowProblemsNew(c *gin.Context) {
 		)
 		return
 	}
-	defer rows.Close()
-
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	type Problem struct {
 		ID    int64
 		Title string
 		Link  string
 	}
-
 
 	contests := map[string][]Problem{
 		"Prelims": {},
@@ -38,17 +50,14 @@ func ShowProblemsNew(c *gin.Context) {
 		"amr":     {},
 	}
 
-
 	for rows.Next() {
-
 		var (
-			id int64
+			id      int64
 			contest string
-			year int
-			title string
-			link string
+			year    int
+			title   string
+			link    string
 		)
-
 
 		err := rows.Scan(
 			&id,
@@ -62,17 +71,15 @@ func ShowProblemsNew(c *gin.Context) {
 			continue
 		}
 
-
 		contests[contest] = append(
 			contests[contest],
 			Problem{
-				ID: id,
+				ID:    id,
 				Title: title,
-				Link: link,
+				Link:  link,
 			},
 		)
 	}
-
 
 	c.HTML(
 		http.StatusOK,
@@ -81,5 +88,4 @@ func ShowProblemsNew(c *gin.Context) {
 			"Problems": contests,
 		},
 	)
-
 }

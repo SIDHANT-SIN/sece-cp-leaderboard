@@ -2,47 +2,62 @@ package handles
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
-     
-	"leaderboard/src/repository"
+
 	"leaderboard/src/configs"
-      
+
 	"github.com/gin-gonic/gin"
 )
 
-// renders the current leaderboard 
-func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
+type LeaderboardHandler struct {
+	repo Repository
+	cfg  *configs.Config
+}
 
+func NewLeaderboardHandler(repo Repository, cfg *configs.Config) *LeaderboardHandler {
+	return &LeaderboardHandler{
+		repo: repo,
+		cfg:  cfg,
+	}
+}
 
-	cachedUsers, cachedContests, cachedResults, cachedUserTotals, err := repository.GetLeaderboardCache()
+// renders the current leaderboard
+func (h *LeaderboardHandler) ShowLeaderboard(c *gin.Context) {
+
+	cachedUsers, cachedContests, cachedResults, cachedUserTotals, err := h.repo.GetLeaderboardCache()
 	if err == nil && cachedUsers != nil && len(cachedUsers) > 0 {
 		fmt.Printf("cache hit")
-		
 		c.HTML(http.StatusOK, "leaderboard.tmpl", gin.H{
 			"users":      cachedUsers,
 			"contests":   cachedContests,
 			"results":    cachedResults,
 			"userTotals": cachedUserTotals,
-			"logo": cfg.Logo,
+			"logo":       h.cfg.Logo,
 		})
 		return
 	}
-
-	
 	fmt.Printf("cache miss")
-	userRows, err := repository.GetUsers()
+	userRows, err := h.repo.GetUsers()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "DB error")
 		return
 	}
-	defer userRows.Close()
+	defer func() {
+		if err := userRows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 
 	var users []map[string]interface{}
 	for userRows.Next() {
 		var id int
 		var handle, displayName string
-		userRows.Scan(&id, &handle, &displayName)
+		if err := userRows.Scan(&id, &handle, &displayName); err != nil {
+			c.String(http.StatusInternalServerError, "DB scan error: %v", err)
+			return
+		}
 		users = append(users, map[string]interface{}{
 			"id":           id,
 			"handle":       handle,
@@ -50,18 +65,25 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 		})
 	}
 
-	contestRows, err := repository.GetContests()
+	contestRows, err := h.repo.GetContests()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "DB error")
 		return
 	}
-	defer contestRows.Close()
+	defer func() {
+		if err := contestRows.Close(); err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}()
 
 	var contests []map[string]interface{}
 	for contestRows.Next() {
 		var id, cfid, startTime int
 		var name string
-		contestRows.Scan(&id, &cfid, &name, &startTime)
+		if err := contestRows.Scan(&id, &cfid, &name, &startTime); err != nil {
+			c.String(http.StatusInternalServerError, "DB scan error: %v", err)
+			return
+		}
 		contests = append(contests, map[string]interface{}{
 			"id":         id,
 			"cfid":       cfid,
@@ -70,15 +92,22 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 		})
 	}
 
-	results := make(map[int]map[int]map[string]interface{}) 
-	userTotals := make(map[int]int)                         
+	results := make(map[int]map[int]map[string]interface{})
+	userTotals := make(map[int]int)
 
-	rows, err := repository.GetAllResults()
+	rows, err := h.repo.GetAllResults()
 	if err == nil {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Printf("failed to close contestRows: %v", err)
+			}
+		}()
 		for rows.Next() {
 			var userID, contestID, rank, points int
-			rows.Scan(&userID, &contestID, &rank, &points)
+			if err := rows.Scan(&userID, &contestID, &rank, &points); err != nil {
+				log.Printf("failed to scan row: %v", err)
+				continue
+			}
 
 			contestExists := false
 			for _, c := range contests {
@@ -125,42 +154,48 @@ func ShowLeaderboard(c *gin.Context, cfg *configs.Config) {
 		rankedUsers[i]["total_points"] = ut.Total
 	}
 
-	err = repository.SetLeaderboardCache(rankedUsers, contests, results, userTotals)
+	err = h.repo.SetLeaderboardCache(rankedUsers, contests, results, userTotals)
 	if err != nil {
 		fmt.Printf("Warning: failed to save leaderboard cache: %v\n", err)
 	}
-	
+
 	fmt.Printf("cache saved")
-	
 
 	c.HTML(http.StatusOK, "leaderboard.tmpl", gin.H{
 		"users":      rankedUsers,
 		"contests":   contests,
 		"results":    results,
 		"userTotals": userTotals,
-		"logo" : cfg.Logo,
+		"logo":       h.cfg.Logo,
 	})
 }
 
-//  renders the past leaderboard filtered by batch year
-func ShowPastLeaderboard(c *gin.Context) {
+// renders the past leaderboard filtered by batch year
+func (h *LeaderboardHandler) ShowPastLeaderboard(c *gin.Context) {
 	batch := c.Query("batch")
 	if batch == "" {
-		batch = "2023" 
+		batch = "2023"
 	}
 
-	rows, err := repository.GetPastUsersByBatch(batch)
+	rows, err := h.repo.GetPastUsersByBatch(batch)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "DB error")
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	var users []map[string]interface{}
 	for rows.Next() {
 		var id, cur, mx, by int
 		var handle, name, title string
-		rows.Scan(&id, &handle, &name, &cur, &mx, &title, &by)
+		if err := rows.Scan(&id, &handle, &name, &cur, &mx, &title, &by); err != nil {
+			log.Printf("failed to scan row: %v", err)
+			continue
+		}
 		users = append(users, map[string]interface{}{
 			"id":             id,
 			"handle":         handle,
@@ -187,18 +222,25 @@ func ShowPastLeaderboard(c *gin.Context) {
 }
 
 // recalculates the entire leaderboard and stores it in Redis
-func rebuildLeaderboardCache() error {
-	userRows, err := repository.GetUsers()
+func (h *LeaderboardHandler) RebuildLeaderboardCache() error {
+	userRows, err := h.repo.GetUsers()
 	if err != nil {
 		return err
 	}
-	defer userRows.Close()
+	defer func() {
+		if err := userRows.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	var users []map[string]interface{}
 	for userRows.Next() {
 		var id int
 		var handle, displayName string
-		userRows.Scan(&id, &handle, &displayName)
+		if err := userRows.Scan(&id, &handle, &displayName); err != nil {
+			log.Printf("failed to scan row: %v", err)
+			continue
+		}
 		users = append(users, map[string]interface{}{
 			"id":           id,
 			"handle":       handle,
@@ -206,17 +248,24 @@ func rebuildLeaderboardCache() error {
 		})
 	}
 
-	contestRows, err := repository.GetContests()
+	contestRows, err := h.repo.GetContests()
 	if err != nil {
 		return err
 	}
-	defer contestRows.Close()
+	defer func() {
+		if err := contestRows.Close(); err != nil {
+			log.Printf("failed to close contestRows: %v", err)
+		}
+	}()
 
 	var contests []map[string]interface{}
 	for contestRows.Next() {
 		var id, cfid, startTime int
 		var name string
-		contestRows.Scan(&id, &cfid, &name, &startTime)
+		if err := contestRows.Scan(&id, &cfid, &name, &startTime); err != nil {
+			log.Printf("failed to scan row: %v", err)
+			continue
+		}
 		contests = append(contests, map[string]interface{}{
 			"id":         id,
 			"cfid":       cfid,
@@ -228,12 +277,19 @@ func rebuildLeaderboardCache() error {
 	results := make(map[int]map[int]map[string]interface{})
 	userTotals := make(map[int]int)
 
-	rows, err := repository.GetAllResults()
+	rows, err := h.repo.GetAllResults()
 	if err == nil {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Printf("failed to close contestRows: %v", err)
+			}
+		}()
 		for rows.Next() {
 			var userID, contestID, rank, points int
-			rows.Scan(&userID, &contestID, &rank, &points)
+			if err := rows.Scan(&userID, &contestID, &rank, &points); err != nil {
+				log.Printf("failed to scan row: %v", err)
+				continue
+			}
 
 			contestExists := false
 			for _, c := range contests {
@@ -280,5 +336,5 @@ func rebuildLeaderboardCache() error {
 		rankedUsers[i]["total_points"] = ut.Total
 	}
 
-	return repository.SetLeaderboardCache(rankedUsers, contests, results, userTotals)
+	return h.repo.SetLeaderboardCache(rankedUsers, contests, results, userTotals)
 }

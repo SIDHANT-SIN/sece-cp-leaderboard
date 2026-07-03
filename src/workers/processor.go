@@ -5,21 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"leaderboard/src/repository"
-
 	"leaderboard/src/database"
+	"leaderboard/src/repository"
 
 	"github.com/hibiken/asynq"
 )
 
+// CFBaseURL is extracted so tests can override it with a mock local server
+var CFBaseURL = "https://codeforces.com/api"
+
 const cfRateLimit = 2100 * time.Millisecond
-const cfRateLimit2 = 10* time.Millisecond
+const cfRateLimit2 = 10 * time.Millisecond
 
 type userEntry struct {
 	ID     int
@@ -32,6 +35,7 @@ func waitForCFRateLimit(start time.Time) {
 		time.Sleep(cfRateLimit - elapsed)
 	}
 }
+
 func waitForCFRateLimit2(start time.Time) {
 	elapsed := time.Since(start)
 	if elapsed < cfRateLimit2 {
@@ -39,27 +43,40 @@ func waitForCFRateLimit2(start time.Time) {
 	}
 }
 
-func updateJobError(jobID, msg string) {
+// updateJobError updated to accept context and redis client
+func updateJobError(ctx context.Context, jobID, msg string) {
 	if jobID == "" {
 		return
 	}
-	state, err := GetJobState(jobID)
+	state, err := GetJobState(ctx, database.RedisClient, jobID)
 	if err == nil && state != nil {
 		state.Status = "failed"
 		state.Error = msg
 		state.CompletedAt = time.Now().Format(time.RFC3339)
-		SetJobState(jobID, state, 10*time.Minute)
+		if err := SetJobState(ctx, database.RedisClient, jobID, state, 10*time.Minute); err != nil {
+			log.Printf("failed to set job state: %v", err)
+		}
 	}
 }
 
-// shared helper to call CF API and store results
+// httpClient safely defines timeouts for external requests
+var httpClient = &http.Client{
+	Timeout: 15 * time.Second,
+}
+
+// processSingleContestStandings refactored to use CFBaseURL and httpClient
 func processSingleContestStandings(cfContestID, contestDBID int, users []userEntry) error {
-	url := "https://codeforces.com/api/contest.ratingChanges?contestId=" + fmt.Sprint(cfContestID)
-	resp, err := http.Get(url)
+	url := fmt.Sprintf("%s/contest.ratingChanges?contestId=%d", CFBaseURL, cfContestID)
+
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("CF standings returned HTTP %d", resp.StatusCode)
@@ -110,7 +127,6 @@ func processSingleContestStandings(cfContestID, contestDBID int, users []userEnt
 	return nil
 }
 
-//  processes rating changes for a single contest.
 func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 	start := time.Now()
 	defer waitForCFRateLimit2(start)
@@ -123,32 +139,38 @@ func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 	fmt.Printf("[worker] Processing single contest CF#%d\n", p.CFContestID)
 
 	if p.JobID != "" {
-		state, err := GetJobState(p.JobID)
+		state, err := GetJobState(ctx, database.RedisClient, p.JobID)
 		if err == nil && state != nil {
 			state.Total = 1
 			state.Current = 0
-			SetJobState(p.JobID, state, 10*time.Minute)
+			if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+				log.Printf("failed to set job state: %v", err)
+			}
 		}
 
-		database.RedisClient.Set(ctx, "sync:job_id", p.JobID, 30*time.Minute)
-		database.RedisClient.Set(ctx, "sync:status", "processing", 30*time.Minute)
-		database.RedisClient.Set(ctx, "sync:total", 1, 30*time.Minute)
-		database.RedisClient.Set(ctx, "sync:current", 0, 30*time.Minute)
+		_ = database.RedisClient.Set(ctx, "sync:job_id", p.JobID, 30*time.Minute).Err()
+		_ = database.RedisClient.Set(ctx, "sync:status", "processing", 30*time.Minute).Err()
+		_ = database.RedisClient.Set(ctx, "sync:total", 1, 30*time.Minute).Err()
+		_ = database.RedisClient.Set(ctx, "sync:current", 0, 30*time.Minute).Err()
 	}
 
 	userRows, err := repository.GetUsers()
 	if err != nil {
 		if p.JobID != "" {
-			updateJobError(p.JobID, "failed to load users: "+err.Error())
+			updateJobError(ctx, p.JobID, "failed to load users: "+err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			
-			database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
-			
-			ReleaseActiveJobLock(p.JobID)
+			_ = database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total").Err()
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return err
 	}
-	defer userRows.Close()
+	defer func() {
+		if err := userRows.Close(); err != nil {
+			log.Printf("failed to close userRows: %v", err)
+		}
+	}()
 
 	var users []userEntry
 	for userRows.Next() {
@@ -162,35 +184,36 @@ func HandleCFRatingChanges(ctx context.Context, t *asynq.Task) error {
 	err = processSingleContestStandings(p.CFContestID, p.ContestDBID, users)
 	if err != nil {
 		if p.JobID != "" {
-			updateJobError(p.JobID, err.Error())
+			updateJobError(ctx, p.JobID, err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-		
-			database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
-			
-			ReleaseActiveJobLock(p.JobID)
+			_ = database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total").Err()
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return err
 	}
 
 	if p.JobID != "" {
-		state, err := GetJobState(p.JobID)
+		state, err := GetJobState(ctx, database.RedisClient, p.JobID)
 		if err == nil && state != nil {
 			state.Current = 1
 			state.Status = "completed"
 			state.CompletedAt = time.Now().Format(time.RFC3339)
-			SetJobState(p.JobID, state, 10*time.Minute)
+			if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+				log.Printf("failed to set job state: %v", err)
+			}
 		}
 		_ = repository.UpdateSyncLog(p.JobID, "completed", 1, "[]")
-	
-		database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
-		
-		ReleaseActiveJobLock(p.JobID)
+		_ = database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total").Err()
+		if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+			log.Printf("failed to release active job lock: %v", err)
+		}
 	}
 
 	return nil
 }
 
-//  processes rating changes for all contests sequentially.
 func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 	var p CFBatchRefreshPayload
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
@@ -201,11 +224,17 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 
 	userRows, err := repository.GetUsers()
 	if err != nil {
-		updateJobError(p.JobID, "failed to load users: "+err.Error())
-		ReleaseActiveJobLock(p.JobID)
+		updateJobError(ctx, p.JobID, "failed to load users: "+err.Error())
+		if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+			log.Printf("failed to release active job lock: %v", err)
+		}
 		return err
 	}
-	defer userRows.Close()
+	defer func() {
+		if err := userRows.Close(); err != nil {
+			log.Printf("failed to close userRows: %v", err)
+		}
+	}()
 
 	var users []userEntry
 	for userRows.Next() {
@@ -218,11 +247,17 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 
 	contestRows, err := repository.GetContests()
 	if err != nil {
-		updateJobError(p.JobID, "failed to load contests: "+err.Error())
-		ReleaseActiveJobLock(p.JobID)
+		updateJobError(ctx, p.JobID, "failed to load contests: "+err.Error())
+		if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+			log.Printf("failed to release active job lock: %v", err)
+		}
 		return err
 	}
-	defer contestRows.Close()
+	defer func() {
+		if err := contestRows.Close(); err != nil {
+			log.Printf("failed to close contestRows: %v", err)
+		}
+	}()
 
 	type contestEntry struct {
 		ID   int
@@ -243,77 +278,86 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 	if err == nil && limitStr != "" {
 		limit, _ := strconv.Atoi(limitStr)
 		if limit > 0 && limit <= len(contests) {
-			contests = contests[:limit] 
+			contests = contests[:limit]
 		}
-	
-		database.RedisClient.Del(ctx, fmt.Sprintf("sync_limit:%s", p.JobID))
+		_ = database.RedisClient.Del(ctx, fmt.Sprintf("sync_limit:%s", p.JobID)).Err()
 	}
 
 	total := len(contests)
 	successful := 0
 
-	state, err := GetJobState(p.JobID)
+	state, err := GetJobState(ctx, database.RedisClient, p.JobID)
 	if err == nil && state != nil {
 		state.Total = total
 		state.Current = 0
-		SetJobState(p.JobID, state, 10*time.Minute)
+		if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+			log.Printf("failed to set job state: %v", err)
+		}
 	}
 
-	database.RedisClient.Set(ctx, "sync:job_id", p.JobID, 30*time.Minute)
-	database.RedisClient.Set(ctx, "sync:status", "processing", 30*time.Minute)
-	database.RedisClient.Set(ctx, "sync:total", total, 30*time.Minute)
-	database.RedisClient.Set(ctx, "sync:current", 0, 30*time.Minute)
+	_ = database.RedisClient.Set(ctx, "sync:job_id", p.JobID, 30*time.Minute).Err()
+	_ = database.RedisClient.Set(ctx, "sync:status", "processing", 30*time.Minute).Err()
+	_ = database.RedisClient.Set(ctx, "sync:total", total, 30*time.Minute).Err()
+	_ = database.RedisClient.Set(ctx, "sync:current", 0, 30*time.Minute).Err()
 
 	for idx, contest := range contests {
 		select {
 		case <-ctx.Done():
 			fmt.Printf("[worker] Batch refresh JobID %s cancelled mid-way via context\n", p.JobID)
-			
-			if state, errState := GetJobState(p.JobID); errState == nil && state != nil {
+			if state, errState := GetJobState(ctx, database.RedisClient, p.JobID); errState == nil && state != nil {
 				state.Status = "cancelled"
 				state.CompletedAt = time.Now().Format(time.RFC3339)
-				SetJobState(p.JobID, state, 10*time.Minute)
+				if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+					log.Printf("failed to set job state: %v", err)
+				}
 			}
 
-			failedList, _ := GetFailedContests(p.JobID)
+			failedList, _ := GetFailedContests(ctx, database.RedisClient, p.JobID)
 			failedJSON := "[]"
 			if len(failedList) > 0 {
 				bytes, _ := json.Marshal(failedList)
 				failedJSON = string(bytes)
 			}
 			_ = repository.UpdateSyncLog(p.JobID, "cancelled", successful, failedJSON)
-			ClearFailedContests(p.JobID)
-			
-			database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
-			ReleaseActiveJobLock(p.JobID)
-      
+			if err := ClearFailedContests(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to clear failed contests: %v", err)
+			}
+
+			_ = database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total").Err()
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 			return fmt.Errorf("task cancelled via context: %w", asynq.SkipRetry)
-			
+
 		default:
-			
 			cancelSignal, _ := database.RedisClient.Get(ctx, "sync:cancel_signal").Result()
 			if cancelSignal == "1" {
 				fmt.Printf("[worker] Batch refresh JobID %s manually aborted via Redis signal\n", p.JobID)
-				database.RedisClient.Del(ctx, "sync:cancel_signal") 
+				_ = database.RedisClient.Del(ctx, "sync:cancel_signal").Err()
 
-				if state, errState := GetJobState(p.JobID); errState == nil && state != nil {
+				if state, errState := GetJobState(ctx, database.RedisClient, p.JobID); errState == nil && state != nil {
 					state.Status = "cancelled"
 					state.CompletedAt = time.Now().Format(time.RFC3339)
-					SetJobState(p.JobID, state, 10*time.Minute)
+					if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+						log.Printf("failed to set job state: %v", err)
+					}
 				}
 
-				failedList, _ := GetFailedContests(p.JobID)
+				failedList, _ := GetFailedContests(ctx, database.RedisClient, p.JobID)
 				failedJSON := "[]"
 				if len(failedList) > 0 {
 					bytes, _ := json.Marshal(failedList)
 					failedJSON = string(bytes)
 				}
 				_ = repository.UpdateSyncLog(p.JobID, "cancelled", successful, failedJSON)
-				ClearFailedContests(p.JobID)
+				if err := ClearFailedContests(ctx, database.RedisClient, p.JobID); err != nil {
+					log.Printf("failed to clear failed contests: %v", err)
+				}
 
-				database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
-				ReleaseActiveJobLock(p.JobID)
-           
+				_ = database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total").Err()
+				if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+					log.Printf("failed to release active job lock: %v", err)
+				}
 				return fmt.Errorf("batch sync cancelled by admin request: %w", asynq.SkipRetry)
 			}
 		}
@@ -324,25 +368,29 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 		err = processSingleContestStandings(contest.CFID, contest.ID, users)
 		if err != nil {
 			fmt.Printf("[worker] Failed CF#%d: %v\n", contest.CFID, err)
-			AppendFailedContest(p.JobID, fmt.Sprintf("CF#%d: %v", contest.CFID, err))
+			if err := AppendFailedContest(ctx, database.RedisClient, p.JobID, fmt.Sprintf("CF#%d: %v", contest.CFID, err)); err != nil {
+				log.Printf("failed to append failed contest: %v", err)
+			}
 		} else {
 			successful++
 		}
 
-		state, errState := GetJobState(p.JobID)
+		state, errState := GetJobState(ctx, database.RedisClient, p.JobID)
 		if errState == nil && state != nil {
 			state.Current = idx + 1
-			SetJobState(p.JobID, state, 10*time.Minute)
+			if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+				log.Printf("failed to set job state: %v", err)
+			}
 		}
 
-		database.RedisClient.Set(ctx, "sync:current", idx+1, 30*time.Minute)
+		_ = database.RedisClient.Set(ctx, "sync:current", idx+1, 30*time.Minute).Err()
 
 		waitForCFRateLimit2(start)
 	}
 
 	fmt.Printf("[worker] Batch refresh JobID %s finished. Successful: %d/%d\n", p.JobID, successful, total)
 
-	failedList, _ := GetFailedContests(p.JobID)
+	failedList, _ := GetFailedContests(ctx, database.RedisClient, p.JobID)
 	failedJSON := "[]"
 	if len(failedList) > 0 {
 		bytes, _ := json.Marshal(failedList)
@@ -350,22 +398,27 @@ func HandleCFBatchRefresh(ctx context.Context, t *asynq.Task) error {
 	}
 
 	_ = repository.UpdateSyncLog(p.JobID, "completed", successful, failedJSON)
-	ClearFailedContests(p.JobID)
+	if err := ClearFailedContests(ctx, database.RedisClient, p.JobID); err != nil {
+		log.Printf("failed to clear failed contests: %v", err)
+	}
 
-	state, errState := GetJobState(p.JobID)
+	state, errState := GetJobState(ctx, database.RedisClient, p.JobID)
 	if errState == nil && state != nil {
 		state.Status = "completed"
 		state.CompletedAt = time.Now().Format(time.RFC3339)
-		SetJobState(p.JobID, state, 10*time.Minute)
+		if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+			log.Printf("failed to set job state: %v", err)
+		}
 	}
 
-	database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total")
+	_ = database.RedisClient.Del(ctx, "sync:job_id", "sync:status", "sync:current", "sync:total").Err()
 
-	ReleaseActiveJobLock(p.JobID)
+	if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+		log.Printf("failed to release active job lock: %v", err)
+	}
 	return nil
 }
 
-//  fetches user_info for all past users and updates ratings in DB.
 func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 	start := time.Now()
 	defer waitForCFRateLimit2(start)
@@ -378,25 +431,28 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 	fmt.Printf("[worker] Refreshing past user ratings for JobID %s\n", p.JobID)
 
 	if p.JobID != "" {
-	
 		if p.JobID == "cron_refresh_rating" {
 			_ = repository.CreateSyncLog(p.JobID, 1)
 		}
 
-		state, err := GetJobState(p.JobID)
+		state, err := GetJobState(ctx, database.RedisClient, p.JobID)
 		if err == nil && state != nil {
 			state.Total = 1
 			state.Current = 0
-			SetJobState(p.JobID, state, 10*time.Minute)
+			if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+				log.Printf("failed to set job state: %v", err)
+			}
 		}
 	}
 
 	handles, err := repository.GetPastUserHandles()
 	if err != nil {
 		if p.JobID != "" {
-			updateJobError(p.JobID, "DB error: "+err.Error())
+			updateJobError(ctx, p.JobID, "DB error: "+err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID) 
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return err
 	}
@@ -404,44 +460,56 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 	if len(handles) == 0 {
 		fmt.Println("[worker] No past users to refresh")
 		if p.JobID != "" {
-			state, err := GetJobState(p.JobID)
+			state, err := GetJobState(ctx, database.RedisClient, p.JobID)
 			if err == nil && state != nil {
 				state.Current = 1
 				state.Status = "completed"
 				state.CompletedAt = time.Now().Format(time.RFC3339)
-				SetJobState(p.JobID, state, 10*time.Minute)
+				if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+					log.Printf("failed to set job state: %v", err)
+				}
 			}
 			_ = repository.UpdateSyncLog(p.JobID, "completed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID) 
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return nil
 	}
 
 	handleStr := strings.Join(handles, ";")
-	url := "https://codeforces.com/api/user.info?handles=" + handleStr
+	url := fmt.Sprintf("%s/user.info?handles=%s", CFBaseURL, handleStr)
 	fmt.Println("[worker] Calling CF API:", url)
 
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		if p.JobID != "" {
-			updateJobError(p.JobID, "CF request failed: "+err.Error())
+			updateJobError(ctx, p.JobID, "CF request failed: "+err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID)
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != 200 {
 		msg := fmt.Sprintf("CF API error: HTTP %d", resp.StatusCode)
 		if p.JobID != "" {
-			updateJobError(p.JobID, msg)
+			updateJobError(ctx, p.JobID, msg)
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID)
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
-		return fmt.Errorf("error %v",msg)
+		return fmt.Errorf("error %v", msg)
 	}
 
 	var apiResp struct {
@@ -456,9 +524,11 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 
 	if err := json.Unmarshal(body, &apiResp); err != nil {
 		if p.JobID != "" {
-			updateJobError(p.JobID, "JSON unmarshal error: "+err.Error())
+			updateJobError(ctx, p.JobID, "JSON unmarshal error: "+err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID)
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return err
 	}
@@ -466,11 +536,13 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 	if apiResp.Status != "OK" {
 		msg := "CF API returned not OK"
 		if p.JobID != "" {
-			updateJobError(p.JobID, msg)
+			updateJobError(ctx, p.JobID, msg)
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID)
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
-		return fmt.Errorf("error %v",msg)
+		return fmt.Errorf("error %v", msg)
 	}
 
 	for _, u := range apiResp.Result {
@@ -484,23 +556,25 @@ func HandleCFRefreshRating(ctx context.Context, t *asynq.Task) error {
 	fmt.Println("[worker] Rating refresh done")
 
 	if p.JobID != "" {
-		state, err := GetJobState(p.JobID)
+		state, err := GetJobState(ctx, database.RedisClient, p.JobID)
 		if err == nil && state != nil {
 			state.Current = 1
 			state.Status = "completed"
 			state.CompletedAt = time.Now().Format(time.RFC3339)
-			SetJobState(p.JobID, state, 10*time.Minute)
+			if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+				log.Printf("failed to set job state: %v", err)
+			}
 		}
 		_ = repository.UpdateSyncLog(p.JobID, "completed", 1, "[]")
-	
-		ReleaseActiveJobLock(p.JobID) 
+
+		if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+			log.Printf("failed to release active job lock: %v", err)
+		}
 	}
 
 	return nil
 }
 
-
-// fetches a single contest from CF standings API and adds it to DB.
 func HandleCFAddContest(ctx context.Context, t *asynq.Task) error {
 	start := time.Now()
 	defer waitForCFRateLimit(start)
@@ -513,33 +587,44 @@ func HandleCFAddContest(ctx context.Context, t *asynq.Task) error {
 	fmt.Printf("[worker] Adding contest CF#%s for JobID %s\n", p.CFContestID, p.JobID)
 
 	if p.JobID != "" {
-		state, err := GetJobState(p.JobID)
+		state, err := GetJobState(ctx, database.RedisClient, p.JobID)
 		if err == nil && state != nil {
 			state.Total = 1
 			state.Current = 0
-			SetJobState(p.JobID, state, 10*time.Minute)
+			if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+				log.Printf("failed to set job state: %v", err)
+			}
 		}
 	}
 
-	resp, err := http.Get("https://codeforces.com/api/contest.standings?contestId=" + p.CFContestID)
+	url := fmt.Sprintf("%s/contest.standings?contestId=%s", CFBaseURL, p.CFContestID)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		if p.JobID != "" {
-			updateJobError(p.JobID, "Could not fetch contest info from Codeforces")
+			updateJobError(ctx, p.JobID, "Could not fetch contest info from Codeforces")
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID)
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != 200 {
 		msg := fmt.Sprintf("Could not fetch contest info (HTTP %d)", resp.StatusCode)
 		if p.JobID != "" {
-			updateJobError(p.JobID, msg)
+			updateJobError(ctx, p.JobID, msg)
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID)
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
-		return fmt.Errorf("error %v",msg)
+		return fmt.Errorf("error %v", msg)
 	}
 
 	var apiResp struct {
@@ -556,9 +641,11 @@ func HandleCFAddContest(ctx context.Context, t *asynq.Task) error {
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil || apiResp.Status != "OK" {
 		msg := "Could not parse contest info from Codeforces"
 		if p.JobID != "" {
-			updateJobError(p.JobID, msg)
+			updateJobError(ctx, p.JobID, msg)
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID)
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return fmt.Errorf("could not parse contest info")
 	}
@@ -566,9 +653,11 @@ func HandleCFAddContest(ctx context.Context, t *asynq.Task) error {
 	err = repository.AddContest(apiResp.Result.Contest.Id, apiResp.Result.Contest.Name, apiResp.Result.Contest.StartTime)
 	if err != nil {
 		if p.JobID != "" {
-			updateJobError(p.JobID, "Could not add contest: "+err.Error())
+			updateJobError(ctx, p.JobID, "Could not add contest: "+err.Error())
 			_ = repository.UpdateSyncLog(p.JobID, "failed", 0, "[]")
-			ReleaseActiveJobLock(p.JobID)
+			if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+				log.Printf("failed to release active job lock: %v", err)
+			}
 		}
 		return err
 	}
@@ -576,15 +665,19 @@ func HandleCFAddContest(ctx context.Context, t *asynq.Task) error {
 	fmt.Printf("[worker] Contest CF#%s added successfully: %s\n", p.CFContestID, apiResp.Result.Contest.Name)
 
 	if p.JobID != "" {
-		state, err := GetJobState(p.JobID)
+		state, err := GetJobState(ctx, database.RedisClient, p.JobID)
 		if err == nil && state != nil {
 			state.Current = 1
 			state.Status = "completed"
 			state.CompletedAt = time.Now().Format(time.RFC3339)
-			SetJobState(p.JobID, state, 10*time.Minute)
+			if err := SetJobState(ctx, database.RedisClient, p.JobID, state, 10*time.Minute); err != nil {
+				log.Printf("failed to set job state: %v", err)
+			}
 		}
 		_ = repository.UpdateSyncLog(p.JobID, "completed", 1, "[]")
-		ReleaseActiveJobLock(p.JobID)
+		if _, err := ReleaseActiveJobLock(ctx, database.RedisClient, p.JobID); err != nil {
+			log.Printf("failed to release active job lock: %v", err)
+		}
 	}
 
 	return nil
@@ -601,7 +694,6 @@ func detectDivision(contestName string) string {
 	return "Div. 1"
 }
 
-// calculatePoints computes leaderboard points for a given rank in a contest
 func calculatePoints(rank, total int, div string) int {
 	if total == 0 || rank == 0 {
 		return 0

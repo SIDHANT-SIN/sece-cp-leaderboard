@@ -1,5 +1,3 @@
-
-
 package repository
 
 import (
@@ -13,7 +11,7 @@ import (
 )
 
 func GetRecentSyncHistory(limit int) (*sql.Rows, error) {
-    return database.DB.Query(`
+	return database.DB.Query(`
         SELECT 
             job_id, 
             status, 
@@ -33,7 +31,7 @@ func CreateSyncLog(jobID string, totalContests int) error {
 		INSERT INTO sync_history (job_id, status, total_contests, started_at)
 		VALUES (?, 'processing', ?, datetime('now', 'localtime'))
 	`, jobID, totalContests)
-	
+
 	return err
 }
 
@@ -71,7 +69,7 @@ func GetCurrentSyncStatus() (map[string]interface{}, error) {
 
 	var dbJobID, dbStatus string
 	var dbTotal, dbSuccessful int
-	
+
 	err := database.DB.QueryRow(`
 		SELECT job_id, status, total_contests, COALESCE(successful_contests, 0)
 		FROM sync_history 
@@ -93,7 +91,7 @@ func GetCurrentSyncStatus() (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"job_id":  dbJobID,
 		"status":  dbStatus,
-		"current": dbSuccessful, 
+		"current": dbSuccessful,
 		"total":   dbTotal,
 	}, nil
 }

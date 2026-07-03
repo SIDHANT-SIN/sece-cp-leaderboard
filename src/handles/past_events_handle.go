@@ -10,6 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type PastEventsHandler struct {
+	cfg *configs.Config
+}
+
+func NewPastEventsHandler(cfg *configs.Config) *PastEventsHandler {
+	return &PastEventsHandler{cfg: cfg}
+}
+
 type PageData struct {
 	Batches []Batch
 }
@@ -20,11 +28,11 @@ type Batch struct {
 }
 
 type Timeline struct {
-	Date    string
-	Title   string 
-	Slides  []Slide
-	Winners []Winner
-	AspectRatio  string
+	Date        string
+	Title       string
+	Slides      []Slide
+	Winners     []Winner
+	AspectRatio string
 }
 
 type Slide struct {
@@ -33,8 +41,8 @@ type Slide struct {
 }
 
 type Winner struct {
-	Tier  string 
-	Label string 
+	Tier  string
+	Label string
 	Name  string
 }
 
@@ -51,20 +59,19 @@ func generateSlides(projectRef string, folderName string, x, y, maxZ int) []Slid
 	return slides
 }
 
-
-func PastEvents(c *gin.Context, cfg *configs.Config) {
-	supaBaseRef := cfg.SupaBase 
-	folderName := cfg.FolderName
+func (h *PastEventsHandler) PastEvents(c *gin.Context) {
+	supaBaseRef := h.cfg.SupaBase
+	folderName := h.cfg.FolderName
 
 	batches := []Batch{
 		{
-			Label: "2023", 
+			Label: "2023",
 			Timelines: []Timeline{
 				{
-					Date:   "30th August, 2024", 
+					Date:        "30th August, 2024",
 					AspectRatio: "1/1",
-					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 3, 1, 5), 
+					Title:       "",
+					Slides:      generateSlides(supaBaseRef, folderName, 3, 1, 5),
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Abhishek Jawanpuria"},
 						{Tier: "silver", Label: "2nd", Name: "Ayush Agarwal"},
@@ -73,10 +80,10 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 					},
 				},
 				{
-					Date:   "2nd February, 2025", 
+					Date:        "2nd February, 2025",
 					AspectRatio: "1/1",
-					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 3, 2, 5), 
+					Title:       "",
+					Slides:      generateSlides(supaBaseRef, folderName, 3, 2, 5),
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Daksh Panwar"},
 						{Tier: "silver", Label: "2nd", Name: "Shubham Pandey"},
@@ -86,13 +93,13 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 			},
 		},
 		{
-			Label: "2024", 
+			Label: "2024",
 			Timelines: []Timeline{
 				{
-					Date:   "12th April, 2025", 
+					Date:        "12th April, 2025",
 					AspectRatio: "16/9",
-					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 4, 1, 6), 
+					Title:       "",
+					Slides:      generateSlides(supaBaseRef, folderName, 4, 1, 6),
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Adarsh Raj"},
 						{Tier: "silver", Label: "2nd", Name: "Amit Kumar"},
@@ -101,10 +108,10 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 					},
 				},
 				{
-					Date:   "6th September, 2025", 
+					Date:        "6th September, 2025",
 					AspectRatio: "16/9",
-					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 4, 2, 5),
+					Title:       "",
+					Slides:      generateSlides(supaBaseRef, folderName, 4, 2, 5),
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Priyanshu"},
 						{Tier: "silver", Label: "2nd", Name: "Adarsh Raj"},
@@ -114,13 +121,13 @@ func PastEvents(c *gin.Context, cfg *configs.Config) {
 			},
 		},
 		{
-			Label: "2025", 
+			Label: "2025",
 			Timelines: []Timeline{
 				{
-					Date:   "18th April, 2026", 
+					Date:        "18th April, 2026",
 					AspectRatio: "16/9",
-					Title:  "",
-					Slides: generateSlides(supaBaseRef, folderName, 5, 1, 6), 
+					Title:       "",
+					Slides:      generateSlides(supaBaseRef, folderName, 5, 1, 6),
 					Winners: []Winner{
 						{Tier: "gold", Label: "1st", Name: "Ujjawal Kumar"},
 						{Tier: "silver", Label: "2nd", Name: "Prashant Sharma"},

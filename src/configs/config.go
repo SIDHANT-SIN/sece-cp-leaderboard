@@ -8,8 +8,6 @@ import (
 )
 
 type Config struct {
-
-
 	AdminUsername      string
 	AdminPasswordHash  string
 	MaintainerPassword string
@@ -20,9 +18,9 @@ type Config struct {
 	DBUrl     string
 	AuthToken string
 
-	RedisURL string
+	RedisURL   string
 	CronSecret string
-	SupaBase string
+	SupaBase   string
 	FolderName string
 }
 
@@ -39,15 +37,15 @@ func LoadConfig() *Config {
 		MaintainerPassword: os.Getenv("MAINTAINER_PASSWORD"),
 
 		Port: os.Getenv("PORT"),
-		Logo : os.Getenv("LOGO_URL"),
+		Logo: os.Getenv("LOGO_URL"),
 
 		DBUrl:     os.Getenv("TURSO_DATABASE_URL"),
 		AuthToken: os.Getenv("TURSO_AUTH_TOKEN"),
 
-		RedisURL: os.Getenv("REDIS_URL"),
+		RedisURL:   os.Getenv("REDIS_URL"),
 		CronSecret: os.Getenv("CRON_SECRET"),
 
-		SupaBase : os.Getenv("SUPABASE_URL"),
+		SupaBase:   os.Getenv("SUPABASE_URL"),
 		FolderName: os.Getenv("FOLDER"),
 	}
 }

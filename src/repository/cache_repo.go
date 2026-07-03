@@ -3,9 +3,9 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"strconv"
 	"time"
-	"log"
 
 	"leaderboard/src/database"
 )
@@ -16,7 +16,7 @@ const LeaderboardCacheKey = "leaderboard:cache"
 
 func SetLeaderboardCache(users, contests []map[string]interface{}, results map[int]map[int]map[string]interface{}, userTotals map[int]int) error {
 	if database.RedisClient == nil {
-		return nil;
+		return nil
 	}
 
 	strResults := make(map[string]map[string]map[string]interface{})
@@ -49,7 +49,7 @@ func SetLeaderboardCache(users, contests []map[string]interface{}, results map[i
 	return database.RedisClient.Set(ctx, LeaderboardCacheKey, string(jsonData), 7*24*time.Hour).Err()
 }
 
-//  fetches and parses the cached leaderboard data from Redis
+// fetches and parses the cached leaderboard data from Redis
 func GetLeaderboardCache() (
 	users []map[string]interface{},
 	contests []map[string]interface{},
@@ -63,15 +63,14 @@ func GetLeaderboardCache() (
 
 	ctx := context.Background()
 
-st := time.Now()
+	st := time.Now()
 
 	val, err := database.RedisClient.Get(ctx, LeaderboardCacheKey).Result()
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	
-log.Printf("Redis GET took %v", time.Since(st))
+	log.Printf("Redis GET took %v", time.Since(st))
 
 	var rawData struct {
 		Users      []map[string]interface{}                     `json:"users"`

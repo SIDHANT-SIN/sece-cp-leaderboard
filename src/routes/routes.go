@@ -3,24 +3,52 @@ package routes
 import (
 	"net/http"
 
-	"leaderboard/src/handles"
 	"leaderboard/src/configs"
+	"leaderboard/src/handles"
 
 	"github.com/gin-gonic/gin"
-
-
 )
 
 func SetupRoutes(cfg *configs.Config) *gin.Engine {
 
 	r := gin.Default()
 
-
-
 	r.LoadHTMLGlob("templates/*")
 
+	pastEventsHandler := handles.NewPastEventsHandler(cfg)
 
-	// login and dashboards
+	apiHandler := handles.NewAPIHandler(
+		&handles.DefaultHTTPClient{},
+		cfg,
+	)
+
+	repo := &handles.DBRepository{}
+
+	leaderboardHandler := handles.NewLeaderboardHandler(repo, cfg)
+
+	authHandler := handles.NewAuthHandler(cfg, repo)
+
+	adminUsersHandler := handles.NewAdminUsersHandler(
+		repo,
+		leaderboardHandler,
+		cfg,
+	)
+
+	adminHandler := handles.NewAdminHandler(
+		repo,
+		leaderboardHandler,
+		cfg,
+	)
+	maintainerUsersHandler := handles.NewMaintainerUsersHandler(
+		cfg,
+		repo,
+		handles.NewDefaultTaskEnqueuer(),
+	)
+
+	icpcpyq := handles.NewIcpc_pyq(
+		repo,
+	)
+
 
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/leaderboard")
@@ -30,86 +58,72 @@ func SetupRoutes(cfg *configs.Config) *gin.Engine {
 		c.Redirect(http.StatusSeeOther, "/leaderboard")
 	})
 
-	r.GET("/admin", handles.ShowAdminDashboard)
-
-	r.GET("/admin_login", handles.AdminLoginPage)
-
-	r.POST("/admin", handles.AdminLogin)
-
-	r.GET("/maintainer", handles.MaintainerLoginPage)
-
-	r.POST("/maintainer/login", handles.MaintainerLogin)
-
-	r.GET("/maintainer/dashboard", handles.MaintainerDashboard)
+	r.GET("/admin", adminHandler.ShowAdminDashboard)
 
 
+	r.GET("/admin_login", authHandler.AdminLoginPage)
+
+	r.POST("/admin", authHandler.AdminLogin)
+
+	r.GET("/maintainer", authHandler.MaintainerLoginPage)
+
+	r.POST("/maintainer/login", authHandler.MaintainerLogin)
+
+	r.GET("/maintainer/dashboard", authHandler.MaintainerDashboard)
 
 
+	r.GET("/maintainer/users", maintainerUsersHandler.ShowPastUsers)
 
-	r.POST("/admin/check_cf_api", handles.CheckCFAPI)
+	r.POST("/maintainer/users/add", maintainerUsersHandler.AddPastUser)
 
-	r.GET("/maintainer/users", handles.ShowPastUsers)
+	r.POST("/maintainer/users/delete", maintainerUsersHandler.DeletePastUser)
 
-	r.POST("/maintainer/users/add", handles.AddPastUser)
+	r.POST("/admin/users/delete", adminUsersHandler.DeleteUser)
 
-	r.POST("/maintainer/users/delete", handles.DeletePastUser)
+	r.GET("/admin/users", adminUsersHandler.ShowUsers)
 
-	r.POST("/admin/users/delete", handles.DeleteUser)
-
-	r.GET("/admin/users", handles.ShowUsers)
-
-	r.POST("/admin/users/add", handles.AddUser)
+	r.POST("/admin/users/add", adminUsersHandler.AddUser)
 
 	// Contest management routes
-	r.GET("/admin/contests", handles.ShowContests)
 
-	r.POST("/admin/contests/add", handles.AddContest)
+	r.GET("/admin/contests", adminHandler.ShowContests)
+	r.POST("/admin/contests/add", adminHandler.AddContest)
 
-	r.POST("/admin/contests/delete", handles.DeleteContest)
+	r.POST("/admin/contests/delete", adminHandler.DeleteContest)
 
 	// admin refresh logs
-    
-	r.GET("/admin/sync_status", handles.GetSyncStatus)
 
-	r.POST("/admin/cancel_sync", handles.CancelSync)
+	r.GET("/admin/sync_status", adminHandler.GetSyncStatus)
+
+	r.POST("/admin/cancel_sync", adminHandler.CancelSync)
 
 	// Leaderboard routes
 
-	r.GET("/leaderboard", func(c *gin.Context) {
-    handles.ShowLeaderboard(c, cfg)
-         })
+	r.GET("/leaderboard", leaderboardHandler.ShowLeaderboard)
 
-	
-	r.GET("/past_events",func(c *gin.Context) {
-    handles.PastEvents(c, cfg)
-         })
+	r.GET("/past_events", pastEventsHandler.PastEvents)
 
-	r.GET("/past_leaderboard", handles.ShowPastLeaderboard)
-
-
-
-
+	r.GET("/past_leaderboard", leaderboardHandler.ShowPastLeaderboard)
 	// Refresh rating route
 
-	r.POST("/maintainer/refresh_rating", handles.RefreshRating)
+	r.POST("/maintainer/refresh_rating", maintainerUsersHandler.RefreshRating)
 
-	r.POST("/admin/refresh_results", handles.RefreshResults)
-
+	r.POST("/admin/refresh_results", adminHandler.RefreshResults)
 	//health checks and cron jobs
 
 	r.GET("/api/health/ping", handles.SendPing)
 
-	r.POST("/api/maintenance/purge", handles.Purg)
+	r.POST("/admin/check_cf_api", apiHandler.CheckCFAPI)
 
+	r.POST("/api/maintenance/purge", apiHandler.Purg)
 
 	//icpc routes
 
-	r.GET("/problems", handles.ShowProblemsNew)
+	r.GET("/problems", icpcpyq.ShowProblemsNew)
 
-	r.GET("/maintainer/icpc_pyq", handles.MaintainerICPCPage)
+	r.GET("/maintainer/icpc_pyq", authHandler.MaintainerICPCPage)
 
-	r.POST("/maintainer/icpc_pyq", handles.CreateICPCProblem)
-
+	r.POST("/maintainer/icpc_pyq", maintainerUsersHandler.CreateICPCProblem)
 
 	return r
 }

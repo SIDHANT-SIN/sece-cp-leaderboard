@@ -14,7 +14,7 @@ func GetContests() (*sql.Rows, error) {
 	`)
 }
 
-//  inserts a new contest
+// inserts a new contest
 func AddContest(cfID int, name string, startTime int64) error {
 	_, err := database.DB.Exec(`
 		INSERT INTO contests (codeforces_contest_id, name, start_time) 
@@ -23,7 +23,7 @@ func AddContest(cfID int, name string, startTime int64) error {
 	return err
 }
 
-//  deletes a contest by id
+// deletes a contest by id
 func DeleteContest(id string) error {
 
 	_, err := database.DB.Exec(

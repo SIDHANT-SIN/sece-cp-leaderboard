@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"leaderboard/src/configs"
@@ -11,15 +12,15 @@ import (
 
 var RedisClient *redis.Client
 
-func ConnectRedis(cfg *configs.Config) {
+func ConnectRedis(cfg *configs.Config) error {
 	if cfg.RedisURL == "" {
 		log.Println("WARNING: REDIS_URL is not set.")
-		return
+		return nil
 	}
 
 	opt, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		log.Fatalf("Failed to parse REDIS_URL: %v", err)
+		return fmt.Errorf("failed to parse REDIS_URL: %w", err)
 	}
 
 	client := redis.NewClient(opt)
@@ -27,9 +28,10 @@ func ConnectRedis(cfg *configs.Config) {
 	ctx := context.Background()
 	_, err = client.Ping(ctx).Result()
 	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+		return fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
 	RedisClient = client
 	log.Println("Successfully connected to Redis!")
+	return nil
 }

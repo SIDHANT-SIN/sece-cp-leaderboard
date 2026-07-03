@@ -12,11 +12,17 @@ import (
 func main() {
 	cfg := configs.LoadConfig()
 
-	database.Connect(cfg)
+	if err := database.Connect(cfg); err != nil {
+		log.Fatalf("Database connection setup failed: %v", err)
+	}
 
-	database.CreateTables()
+	if err := database.CreateTables(); err != nil {
+		log.Fatalf("Database schema setup failed: %v", err)
+	}
 
-	database.ConnectRedis(cfg)
+	if err := database.ConnectRedis(cfg); err != nil {
+		log.Fatalf("Redis connection setup failed: %v", err)
+	}
 
 	if cfg.RedisURL != "" {
 		redisOpt, err := workers.ParseRedisOpt(cfg.RedisURL)
@@ -24,21 +30,29 @@ func main() {
 			log.Fatalf("Failed to parse Redis URL for Asynq: %v", err)
 		}
 
-		workers.PurgeAsynqMetadata()
-
+		if err := workers.PurgeAsynqMetadata(database.RedisClient); err != nil {
+			log.Fatalf("Redis optimization sweep failed: %v", err)
+		}
 		workers.InitClient(redisOpt)
-		go workers.StartServer(redisOpt)
-		go workers.StartScheduler(redisOpt)
+
+		// Kicks off the worker server loops in the background natively
+		if err := workers.StartServer(redisOpt); err != nil {
+			log.Fatalf("[asynq] Worker server failed to start: %v", err)
+		}
+
+		// Kicks off the cron scheduler loops in the background natively
+		if err := workers.StartScheduler(redisOpt); err != nil {
+			log.Fatalf("[asynq] Scheduler failed to start: %v", err)
+		}
 	} else {
 		log.Println("WARNING: REDIS_URL not set. Asynq worker server not started.")
 	}
 
+	// This is your blocking call that keeps the whole application running
 	r := routes.SetupRoutes(cfg)
-
 	port := cfg.Port
 
-	if err := r.Run(":" + port); 
-	err != nil {
+	if err := r.Run(":" + port); err != nil {
 		log.Fatal(err)
 	}
 }

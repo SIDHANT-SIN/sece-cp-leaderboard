@@ -13,7 +13,7 @@ func GetAllResults() (*sql.Rows, error) {
 	`)
 }
 
-//  deletes user contest results for a specific contest
+// deletes user contest results for a specific contest
 func DeleteResultsByContest(contestID string) error {
 	_, err := database.DB.Exec(`
 		DELETE FROM user_contest_results 
@@ -30,7 +30,7 @@ func DeleteAllResults() error {
 	return err
 }
 
-//  inserts or replaces a user's contest result
+// inserts or replaces a user's contest result
 func UpsertResult(userID, contestID, rank, points int) error {
 	_, err := database.DB.Exec(`
 		INSERT OR REPLACE INTO user_contest_results

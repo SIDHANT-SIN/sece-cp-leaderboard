@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"leaderboard/src/database"
 	"database/sql"
+	"leaderboard/src/database"
 )
 
 func GetProblemsNew() (*sql.Rows, error) {
@@ -24,5 +24,3 @@ func GetProblemsNew() (*sql.Rows, error) {
 
 	return rows, nil
 }
-
-

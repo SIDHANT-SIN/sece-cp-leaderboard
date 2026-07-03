@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"leaderboard/src/database"
+	"github.com/redis/go-redis/v9"
 )
 
-func PurgeAsynqMetadata() {
+// PurgeAsynqMetadata accepts the redis client explicitly to be fully testable and linter-compliant
+func PurgeAsynqMetadata(rdb *redis.Client) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -18,15 +19,14 @@ func PurgeAsynqMetadata() {
 	for {
 		var keys []string
 		var err error
-	
-		keys, historyCursor, err = database.RedisClient.Scan(ctx, historyCursor, "asynq:scheduler_history*", 100).Result()
+
+		keys, historyCursor, err = rdb.Scan(ctx, historyCursor, "asynq:scheduler_history*", 100).Result()
 		if err != nil {
-			fmt.Printf("[maintenance] Error scanning scheduler history keys: %v\n", err)
-			break
+			return fmt.Errorf("error scanning scheduler history keys: %w", err)
 		}
 
 		if len(keys) > 0 {
-			err = database.RedisClient.Del(ctx, keys...).Err()
+			err = rdb.Del(ctx, keys...).Err()
 			if err != nil {
 				fmt.Printf("[maintenance] Warning: Failed to delete scheduler history batch: %v\n", err)
 			} else {
@@ -41,7 +41,8 @@ func PurgeAsynqMetadata() {
 
 	trackingKeys := []string{"asynq:servers", "asynq:workers", "asynq:schedulers"}
 	for _, key := range trackingKeys {
-		_ = database.RedisClient.Del(ctx, key)
+		// Explicitly ignore the error with a blank identifier to satisfy the linter
+		_ = rdb.Del(ctx, key).Err()
 	}
 	fmt.Println("[maintenance] Reset active structural instances (servers, workers, schedulers)")
 
@@ -49,15 +50,14 @@ func PurgeAsynqMetadata() {
 	for {
 		var keys []string
 		var err error
-		keys, statsCursor, err = database.RedisClient.Scan(ctx, statsCursor, "asynq:{*}:processed:*", 100).Result()
+		keys, statsCursor, err = rdb.Scan(ctx, statsCursor, "asynq:{*}:processed:*", 100).Result()
 		if err != nil {
-			fmt.Printf("[maintenance] Error scanning historical stats keys: %v\n", err)
-			break
+			return fmt.Errorf("error scanning historical stats keys: %w", err)
 		}
 
 		for _, key := range keys {
-			
-			database.RedisClient.Expire(ctx, key, 24*time.Hour)
+			// FIXED: Added .Err() and explicit blank identifier to pass the linter
+			_ = rdb.Expire(ctx, key, 24*time.Hour).Err()
 		}
 
 		if statsCursor == 0 {
@@ -66,4 +66,6 @@ func PurgeAsynqMetadata() {
 	}
 	fmt.Println("[maintenance] Enforced a strict 24-hour expiration cap on historical processed date counters.")
 	fmt.Println("[maintenance] Redis sweep complete. Database state optimized.")
+
+	return nil
 }
