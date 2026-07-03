@@ -1,7 +1,6 @@
 //go:build integration
 // +build integration
 
-//
 package workers
 
 import (

@@ -10,30 +10,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
-      - run: test -z "$(gofmt -l .)"
-      
+
+      - name: Check Formatting
+        run: |
+          # The -s flag simplifies code (e.g., changing range to omit indices)
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "The following files are not formatted/simplified correctly:"
+            echo "$files"
+            exit 1
+          fi
+
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
       - uses: gitleaks/gitleaks-action@v2
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - run: govulncheck ./...
+
+      - name: Run Vulnerability Scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
+
       - run: |
           go mod download
           go mod verify
+
       - run: go test -tags=unit ./...
+
       - run: go test -tags=smoke ./...
+
       - run: go test -race ./...
+
       - run: |
           go test ./... -coverprofile=coverage.out
           go tool cover -func=coverage.out
@@ -42,11 +65,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
+
       - run: go mod download
+
       - run: go test -tags=integration ./...
 
   build-and-scan:
@@ -54,16 +80,20 @@ jobs:
     needs: [code-quality, test, integration]
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
+
       - run: go build ./...
+
       - run: docker build -t sece-cp-leaderboard .
+
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: sece-cp-leaderboard
           severity: CRITICAL
           format: table
           ignore-unfixed: true
-          exit-code: 0
+          exit-code: 1
