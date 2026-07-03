@@ -93,3 +93,12 @@ jobs:
           format: table
           ignore-unfixed: true
           exit-code: 1
+          
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+
+    steps:
+      - name: Trigger Render Deployment
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
