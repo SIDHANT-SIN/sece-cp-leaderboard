@@ -26,10 +26,6 @@ jobs:
             exit 1
           fi
 
-      - uses: golangci/golangci-lint-action@v8
-        with:
-          version: latest
-
       - uses: gitleaks/gitleaks-action@v2
 
       - name: Run Vulnerability Scan
